@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
@@ -10,6 +11,8 @@ import dash_cytoscape as cyto
 import plotly.graph_objects as go
 
 from src.models import TracerouteResult
+
+logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
 cyto.load_extra_layouts()
 
@@ -191,7 +194,8 @@ def _build_loss_chart(results: list[TracerouteResult]) -> go.Figure:
 
 
 def create_app(results_dir: str = "results") -> Dash:
-    app = Dash(__name__, suppress_callback_exceptions=True)
+    app = Dash(__name__, suppress_callback_exceptions=True, update_title="")
+    app.title = "batchroute"
 
     app.layout = html.Div(
         [

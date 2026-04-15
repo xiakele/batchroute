@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from scapy.config import conf as scapy_conf
 from scapy.layers.inet import ICMP, IP, TCP, UDP
@@ -32,6 +33,7 @@ class ProbeConfig:
     wait: float = DEFAULT_WAIT
     packet_size: int = DEFAULT_PACKET_SIZE
     protocols: list[Protocol] | None = None
+    output_path: Path | None = None
 
     def __post_init__(self):
         if self.protocols is None:
@@ -127,5 +129,12 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
             hop.rtts = rtts
             result.hops.append(hop)
 
+            if config.output_path is not None:
+                result.to_json(config.output_path)
+
     result.destination_reached = destination_reached
+
+    if config.output_path is not None:
+        result.to_json(config.output_path)
+
     return result

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+import threading
+import time
+import webbrowser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -123,6 +126,23 @@ def _protocol_from_arg(val: str | None) -> list[Protocol]:
     return [Protocol(val)]
 
 
+def _start_visualizer(results_dir: str) -> None:
+    from visualizer.app import create_app
+
+    app = create_app(results_dir=results_dir)
+    app.run(host="0.0.0.0", port=8050, debug=False, use_reloader=False)
+
+
+def _launch_visualizer_background(results_dir: Path) -> None:
+    thread = threading.Thread(
+        target=_start_visualizer, args=(str(results_dir),), daemon=True
+    )
+    thread.start()
+    time.sleep(1.5)
+    print("Visualizer running at http://localhost:8050 — press Ctrl+C to exit.")
+    webbrowser.open("http://localhost:8050")
+
+
 def run(args: argparse.Namespace) -> None:
     targets = parse_targets(args.input_file)
     if not targets:
@@ -132,6 +152,9 @@ def run(args: argparse.Namespace) -> None:
     protocols = _protocol_from_arg(args.protocol)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    if not args.no_viz:
+        _launch_visualizer_background(output_dir)
 
     print(
         f"Probing {len(targets)} target(s) with protocol(s): {', '.join(p.value for p in protocols)}"
@@ -149,6 +172,7 @@ def run(args: argparse.Namespace) -> None:
             wait=args.wait,
             packet_size=args.size,
             protocols=protocols,
+            output_path=output_dir / f"{t}.json",
         )
         for t in targets
     }
@@ -168,33 +192,21 @@ def run(args: argparse.Namespace) -> None:
 
             if not args.no_dns:
                 resolve_result(result)
+                result.to_json(output_dir / f"{target}.json")
 
-            out_path = output_dir / f"{target}.json"
-            result.to_json(out_path)
             results.append(result)
             print(
-                f"  {target} — {len(result.hops)} hop(s), destination {'reached' if result.destination_reached else 'not reached'} → {out_path}"
+                f"  {target} — {len(result.hops)} hop(s), destination {'reached' if result.destination_reached else 'not reached'}"
             )
 
     clear_cache()
-    print(f"Done. {len(results)} result(s) written to {output_dir}/")
+    print(f"Probing complete. {len(results)} result(s) written to {output_dir}/")
 
     if not args.no_viz:
-        _launch_visualizer(output_dir)
-
-
-def _launch_visualizer(results_dir: Path) -> None:
-    try:
-        from visualizer.app import create_app
-
-        app = create_app(results_dir=str(results_dir))
-        print(f"Launching visualizer at http://localhost:8050 ...")
-        app.run(host="0.0.0.0", port=8050, debug=False)
-    except ImportError:
-        print(
-            "Visualizer not available. Run `python -m visualizer.app` separately.",
-            file=sys.stderr,
-        )
+        try:
+            threading.Event().wait()
+        except KeyboardInterrupt:
+            print("\nShutting down.")
 
 
 def main() -> None:

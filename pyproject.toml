@@ -3,9 +3,16 @@ name = "batchroute"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 license = { text = "GPL-2.0-or-later" }
-dependencies = []
+dependencies = [
+    "scapy",
+    "pandas",
+    "dnspython",
+    "dash",
+    "dash-cytoscape",
+    "plotly",
+]
 
 [build-system]
 requires = ["hatchling"]

@@ -1,0 +1,19 @@
+from enum import Enum
+
+
+class Protocol(Enum):
+    UDP = "udp"
+    TCP = "tcp"
+    ICMP = "icmp"
+
+
+ALL_PROTOCOLS = [Protocol.UDP, Protocol.TCP, Protocol.ICMP]
+
+DEFAULT_MAX_TTL = 30
+DEFAULT_MIN_TTL = 1
+DEFAULT_QUERIES = 3
+DEFAULT_PORT = 33434
+DEFAULT_TIMEOUT = 5.0
+DEFAULT_WAIT = 0.0
+DEFAULT_PACKET_SIZE = 60
+DEFAULT_OUTPUT_DIR = "results"

@@ -21,5 +21,30 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
 
+[dependency-groups]
+dev = [
+    "mypy>=1.20.1",
+    "pre-commit>=4.5.1",
+    "ruff>=0.15.10",
+]
+
 [project.scripts]
 batchroute = "src.main:main"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+explicit_package_bases = true
+mypy_path = "."
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+[[tool.mypy.overrides]]
+module = ["scapy.*", "dash.*", "dash_cytoscape.*", "plotly.*", "pandas"]
+ignore_missing_imports = true

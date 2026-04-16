@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import socket
 
-import dns.reversename
 import dns.resolver
+import dns.reversename
 
 from src.models import TracerouteResult
-
 
 _cache: dict[str, str | None] = {}
 

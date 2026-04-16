@@ -134,9 +134,7 @@ def _start_visualizer(results_dir: str) -> None:
 
 
 def _launch_visualizer_background(results_dir: Path) -> None:
-    thread = threading.Thread(
-        target=_start_visualizer, args=(str(results_dir),), daemon=True
-    )
+    thread = threading.Thread(target=_start_visualizer, args=(str(results_dir),), daemon=True)
     thread.start()
     time.sleep(1.5)
     print("Visualizer running at http://localhost:8050 — press Ctrl+C to exit.")
@@ -156,9 +154,8 @@ def run(args: argparse.Namespace) -> None:
     if not args.no_viz:
         _launch_visualizer_background(output_dir)
 
-    print(
-        f"Probing {len(targets)} target(s) with protocol(s): {', '.join(p.value for p in protocols)}"
-    )
+    proto_list = ", ".join(p.value for p in protocols)
+    print(f"Probing {len(targets)} target(s) with protocol(s): {proto_list}")
 
     results: list[TracerouteResult] = []
     probe_configs = {
@@ -179,8 +176,7 @@ def run(args: argparse.Namespace) -> None:
 
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         future_to_target = {
-            executor.submit(trace_single_target, cfg): cfg.target
-            for cfg in probe_configs.values()
+            executor.submit(trace_single_target, cfg): cfg.target for cfg in probe_configs.values()
         }
         for future in as_completed(future_to_target):
             target = future_to_target[future]
@@ -195,9 +191,8 @@ def run(args: argparse.Namespace) -> None:
                 result.to_json(output_dir / f"{target}.json")
 
             results.append(result)
-            print(
-                f"  {target} — {len(result.hops)} hop(s), destination {'reached' if result.destination_reached else 'not reached'}"
-            )
+            dest = "reached" if result.destination_reached else "not reached"
+            print(f"  {target} — {len(result.hops)} hop(s), destination {dest}")
 
     clear_cache()
     print(f"Probing complete. {len(results)} result(s) written to {output_dir}/")

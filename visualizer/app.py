@@ -4,10 +4,10 @@ import argparse
 import logging
 from pathlib import Path
 
-from dash import Dash, dcc, html
-from dash.dependencies import Input, Output
 import dash_cytoscape as cyto
 import plotly.graph_objects as go
+from dash import Dash, dcc, html
+from dash.dependencies import Input, Output
 
 from src.models import TracerouteResult
 from visualizer.styles import (
@@ -15,7 +15,6 @@ from visualizer.styles import (
     PLOTLY_LAYOUT,
     PROTOCOL_COLORS,
     SOURCE_NODE_ID,
-    STATUS_COLORS,
     cytoscape_stylesheet,
 )
 
@@ -27,7 +26,7 @@ POLL_INTERVAL_MS = 2000
 
 
 def _load_results(results_dir: str) -> list[TracerouteResult]:
-    results = []
+    results: list[TracerouteResult] = []
     path = Path(results_dir)
     if not path.exists():
         return results
@@ -62,11 +61,7 @@ def _build_graph_elements(results: list[TracerouteResult]) -> list[dict]:
                     "label": label,
                     "is_target": True,
                 },
-                "classes": (
-                    "target probing"
-                    if not result.probing_complete
-                    else "target complete"
-                ),
+                "classes": ("target probing" if not result.probing_complete else "target complete"),
             }
 
         by_protocol: dict[str, list] = {}
@@ -112,7 +107,7 @@ def _build_graph_elements(results: list[TracerouteResult]) -> list[dict]:
                             "protocol": proto_name,
                             "avg_rtt": avg_rtt,
                             "loss_rate": loss,
-                            "weight": max(1, int((avg_rtt or 1))),
+                            "weight": max(1, int(avg_rtt or 1)),
                         },
                     }
 
@@ -388,7 +383,7 @@ def create_app(results_dir: str = "results") -> Dash:
         ],
         Input("poll-interval", "n_intervals"),
     )
-    def update_graph(_n):
+    def update_graph(_n: int) -> tuple:
         results = _load_results(results_dir)
         elements = _build_graph_elements(results)
         stats = _build_stats_bar(results)
@@ -401,7 +396,7 @@ def create_app(results_dir: str = "results") -> Dash:
         Output("node-details", "children"),
         Input("topo-graph", "tapNodeData"),
     )
-    def show_node_details(data):
+    def show_node_details(data: dict | None) -> str:
         if data is None:
             return "Click a node to see details."
         lines = [f"IP: {data.get('id', '?')}"]
@@ -419,9 +414,7 @@ def create_app(results_dir: str = "results") -> Dash:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Batchroute topology visualizer (standalone)."
-    )
+    parser = argparse.ArgumentParser(description="Batchroute topology visualizer (standalone).")
     parser.add_argument(
         "--results-dir",
         default="results",
@@ -429,5 +422,5 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     app = create_app(results_dir=args.results_dir)
-    print(f"Launching visualizer at http://localhost:8050 ...")
+    print("Launching visualizer at http://localhost:8050 ...")
     app.run(host="0.0.0.0", port=8050, debug=False)

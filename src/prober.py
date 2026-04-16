@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, cast
 
 from scapy.config import conf as scapy_conf
 from scapy.layers.inet import ICMP, IP, TCP, UDP
@@ -32,12 +33,8 @@ class ProbeConfig:
     timeout: float = DEFAULT_TIMEOUT
     wait: float = DEFAULT_WAIT
     packet_size: int = DEFAULT_PACKET_SIZE
-    protocols: list[Protocol] | None = None
+    protocols: list[Protocol] = field(default_factory=lambda: list(ALL_PROTOCOLS))
     output_path: Path | None = None
-
-    def __post_init__(self):
-        if self.protocols is None:
-            self.protocols = list(ALL_PROTOCOLS)
 
 
 def _payload_size(total_size: int) -> int:
@@ -57,7 +54,7 @@ def _build_probe(target: str, ttl: int, protocol: Protocol, port: int, size: int
         return ip_layer / ICMP(type=8) / payload_bytes
 
 
-def _is_destination_reached(response, protocol: Protocol, target: str) -> bool:
+def _is_destination_reached(response: Any, protocol: Protocol, target: str) -> bool:
     if response is None:
         return False
 
@@ -68,26 +65,26 @@ def _is_destination_reached(response, protocol: Protocol, target: str) -> bool:
 
     if protocol == Protocol.UDP:
         if resp_ip.src == target and ICMP in response:
-            return response[ICMP].type in (3, 11)
+            return cast(int, response[ICMP].type) in (3, 11)
         return False
 
     elif protocol == Protocol.TCP:
         if resp_ip.src == target and TCP in response:
             return True
         if resp_ip.src == target and ICMP in response:
-            return response[ICMP].type == 3
+            return cast(int, response[ICMP].type) == 3
         return False
 
     else:
         if resp_ip.src == target and ICMP in response:
-            return response[ICMP].type == 0
+            return cast(int, response[ICMP].type) == 0
         return False
 
 
-def _is_time_exceeded(response) -> bool:
+def _is_time_exceeded(response: Any) -> bool:
     if response is None or ICMP not in response:
         return False
-    return response[ICMP].type == 11
+    return cast(int, response[ICMP].type) == 11
 
 
 def trace_single_target(config: ProbeConfig) -> TracerouteResult:

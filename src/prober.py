@@ -133,6 +133,7 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
                 result.to_json(config.output_path)
 
     result.destination_reached = destination_reached
+    result.probing_complete = True
 
     if config.output_path is not None:
         result.to_json(config.output_path)

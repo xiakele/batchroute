@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import sys
 from pathlib import Path
 
 from dash import Dash, dcc, html
@@ -11,18 +10,18 @@ import dash_cytoscape as cyto
 import plotly.graph_objects as go
 
 from src.models import TracerouteResult
+from visualizer.styles import (
+    CYTO_BG,
+    PLOTLY_LAYOUT,
+    PROTOCOL_COLORS,
+    SOURCE_NODE_ID,
+    STATUS_COLORS,
+    cytoscape_stylesheet,
+)
 
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
 cyto.load_extra_layouts()
-
-SOURCE_NODE_ID = "__source__"
-
-PROTOCOL_COLORS = {
-    "udp": "#4C78A8",
-    "tcp": "#E45756",
-    "icmp": "#54A24B",
-}
 
 POLL_INTERVAL_MS = 2000
 
@@ -51,12 +50,23 @@ def _build_graph_elements(results: list[TracerouteResult]) -> list[dict]:
     for result in results:
         target_id = result.target
         if target_id not in nodes:
+            max_ttl = max((h.ttl for h in result.hops), default=0)
+            current_hops = len(set(h.ttl for h in result.hops))
+            label = _node_label(result.target, None)
+            if not result.probing_complete and max_ttl > 0:
+                label += f"\n({current_hops} hops)"
+
             nodes[target_id] = {
                 "data": {
                     "id": target_id,
-                    "label": _node_label(result.target, None),
+                    "label": label,
                     "is_target": True,
                 },
+                "classes": (
+                    "target probing"
+                    if not result.probing_complete
+                    else "target complete"
+                ),
             }
 
         by_protocol: dict[str, list] = {}
@@ -132,6 +142,71 @@ def _node_label(ip: str, hostname: str | None) -> str:
     return ip
 
 
+def _build_stats_bar(results: list[TracerouteResult]) -> str:
+    if not results:
+        return "Waiting for probe data..."
+    complete = sum(1 for r in results if r.probing_complete)
+    total = len(results)
+    return f"{complete} of {total} target(s) complete"
+
+
+def _build_progress_table(results: list[TracerouteResult]) -> html.Table:
+    rows = [
+        html.Tr(
+            [
+                html.Th("Target"),
+                html.Th("Hops"),
+                html.Th("Status"),
+                html.Th("Dest."),
+            ]
+        )
+    ]
+
+    for result in results:
+        current_hops = len(set(h.ttl for h in result.hops))
+
+        if result.probing_complete:
+            status = html.Span("Complete", className="badge badge-complete")
+        else:
+            status = html.Span("Probing", className="badge badge-probing")
+
+        if result.probing_complete:
+            if result.destination_reached:
+                dest = html.Span("Reached", className="badge-dest-reached")
+            else:
+                dest = html.Span("Unreachable", className="badge-dest-unreachable")
+        else:
+            dest = html.Span("\u2014", className="badge-dest-pending")
+
+        rows.append(
+            html.Tr(
+                [
+                    html.Td(result.target),
+                    html.Td(str(current_hops)),
+                    html.Td(status),
+                    html.Td(dest),
+                ]
+            )
+        )
+
+    return html.Table(rows, className="progress-table")
+
+
+def _build_legend() -> html.Div:
+    items = []
+    for proto, color in PROTOCOL_COLORS.items():
+        items.append(
+            html.Div(
+                className="legend-item",
+                children=[
+                    html.Span(className="legend-dot", style={"backgroundColor": color}),
+                    html.Span(proto.upper()),
+                ],
+            )
+        )
+    return html.Div(className="legend", children=items)
+
+
 def _build_rtt_chart(results: list[TracerouteResult]) -> go.Figure:
     fig = go.Figure()
     for result in results:
@@ -148,17 +223,18 @@ def _build_rtt_chart(results: list[TracerouteResult]) -> go.Figure:
                     y=avg_rtts,
                     mode="lines+markers",
                     name=f"{result.target} ({proto_name})",
-                    line=dict(color=PROTOCOL_COLORS.get(proto_name, "#999")),
+                    line=dict(color=PROTOCOL_COLORS.get(proto_name, "#999"), width=2),
+                    marker=dict(size=5),
                     connectgaps=True,
                 )
             )
 
     fig.update_layout(
+        **PLOTLY_LAYOUT,
         title="RTT per Hop",
         xaxis_title="TTL",
         yaxis_title="RTT (ms)",
         height=300,
-        margin=dict(l=50, r=20, t=40, b=40),
     )
     return fig
 
@@ -183,11 +259,11 @@ def _build_loss_chart(results: list[TracerouteResult]) -> go.Figure:
             )
 
     fig.update_layout(
+        **PLOTLY_LAYOUT,
         title="Loss Rate per Hop",
         xaxis_title="TTL",
-        yaxis_title="Loss Rate (%)",
+        yaxis_title="Loss (%)",
         height=300,
-        margin=dict(l=50, r=20, t=40, b=40),
         barmode="group",
     )
     return fig
@@ -198,67 +274,115 @@ def create_app(results_dir: str = "results") -> Dash:
     app.title = "batchroute"
 
     app.layout = html.Div(
-        [
-            html.H1(
-                "Batchroute — Topology Visualizer",
-                style={"textAlign": "center", "marginBottom": 20},
+        className="app-container",
+        children=[
+            html.Header(
+                className="header",
+                children=[
+                    html.H1("batchroute", className="header-title"),
+                    html.Div(id="stats-bar", className="header-stats"),
+                ],
             ),
             html.Div(
-                id="stats-bar",
-                style={"textAlign": "center", "marginBottom": 10, "color": "#666"},
-            ),
-            cyto.Cytoscape(
-                id="topo-graph",
-                elements=[],
-                layout={
-                    "name": "breadthfirst",
-                    "roots": f"#{SOURCE_NODE_ID}",
-                    "directed": True,
-                    "spacingFactor": 1.2,
-                },
-                style={
-                    "width": "100%",
-                    "height": "600px",
-                    "border": "1px solid #ccc",
-                    "borderRadius": "4px",
-                },
-                stylesheet=_cytoscape_stylesheet(),
-            ),
-            html.Div(
-                [
-                    html.H3("Node Details", style={"marginTop": 20}),
-                    html.Pre(
-                        id="node-details",
-                        style={
-                            "backgroundColor": "#f5f5f5",
-                            "padding": 10,
-                            "borderRadius": 4,
-                        },
+                className="main-grid",
+                children=[
+                    html.Div(
+                        className="graph-card",
+                        children=[
+                            cyto.Cytoscape(
+                                id="topo-graph",
+                                elements=[],
+                                layout={
+                                    "name": "breadthfirst",
+                                    "roots": f"#{SOURCE_NODE_ID}",
+                                    "directed": True,
+                                    "spacingFactor": 1.2,
+                                },
+                                style={
+                                    "width": "100%",
+                                    "height": "600px",
+                                    "backgroundColor": CYTO_BG,
+                                },
+                                stylesheet=cytoscape_stylesheet(),
+                            ),
+                        ],
                     ),
-                ]
+                    html.Div(
+                        className="sidebar",
+                        children=[
+                            html.Div(
+                                className="card",
+                                children=[
+                                    html.Div(
+                                        className="card-body",
+                                        children=[
+                                            html.Div(
+                                                className="card-title",
+                                                children="Node Details",
+                                            ),
+                                            html.Pre(
+                                                id="node-details",
+                                                className="node-details-pre",
+                                                children="Click a node to see details.",
+                                            ),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                            html.Div(
+                                className="card",
+                                children=[
+                                    html.Div(
+                                        className="card-body",
+                                        children=[
+                                            html.Div(
+                                                className="card-title",
+                                                children="Probe Progress",
+                                            ),
+                                            html.Div(id="progress-table"),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                            html.Div(
+                                className="card",
+                                children=[
+                                    html.Div(
+                                        className="card-body",
+                                        children=[
+                                            html.Div(
+                                                className="card-title",
+                                                children="Protocol",
+                                            ),
+                                            _build_legend(),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                        ],
+                    ),
+                ],
             ),
             html.Div(
-                [
+                className="charts-grid",
+                children=[
                     dcc.Graph(id="rtt-chart"),
                     dcc.Graph(id="loss-chart"),
                 ],
-                style={"marginTop": 20},
             ),
             dcc.Interval(
                 id="poll-interval",
                 interval=POLL_INTERVAL_MS,
                 n_intervals=0,
             ),
-            html.Div(
-                id="results-dir-store", style={"display": "none"}, children=results_dir
-            ),
-        ]
+        ],
     )
 
     @app.callback(
         [
             Output("topo-graph", "elements"),
             Output("stats-bar", "children"),
+            Output("progress-table", "children"),
             Output("rtt-chart", "figure"),
             Output("loss-chart", "figure"),
         ],
@@ -267,10 +391,11 @@ def create_app(results_dir: str = "results") -> Dash:
     def update_graph(_n):
         results = _load_results(results_dir)
         elements = _build_graph_elements(results)
-        stats = f"{len(results)} target(s) probed — {len([e for e in elements if 'source' not in e.get('data', {})])} node(s), {len([e for e in elements if 'source' in e.get('data', {})])} edge(s)"
+        stats = _build_stats_bar(results)
+        table = _build_progress_table(results)
         rtt_fig = _build_rtt_chart(results)
         loss_fig = _build_loss_chart(results)
-        return elements, stats, rtt_fig, loss_fig
+        return elements, stats, table, rtt_fig, loss_fig
 
     @app.callback(
         Output("node-details", "children"),
@@ -279,7 +404,7 @@ def create_app(results_dir: str = "results") -> Dash:
     def show_node_details(data):
         if data is None:
             return "Click a node to see details."
-        lines = [f"ID: {data.get('id', '?')}"]
+        lines = [f"IP: {data.get('id', '?')}"]
         if data.get("hostname"):
             lines.append(f"Hostname: {data['hostname']}")
         if data.get("rtt") is not None:
@@ -291,79 +416,6 @@ def create_app(results_dir: str = "results") -> Dash:
         return "\n".join(lines)
 
     return app
-
-
-def _cytoscape_stylesheet() -> list[dict]:
-    return [
-        {
-            "selector": "node",
-            "style": {
-                "label": "data(label)",
-                "text-wrap": "wrap",
-                "text-valign": "center",
-                "text-halign": "center",
-                "font-size": "10px",
-                "width": 40,
-                "height": 40,
-                "background-color": "#888",
-                "color": "#fff",
-                "text-outline-color": "#333",
-                "text-outline-width": 1,
-            },
-        },
-        {
-            "selector": f"node[id = '{SOURCE_NODE_ID}']",
-            "style": {
-                "background-color": "#222",
-                "width": 50,
-                "height": 50,
-                "font-size": "12px",
-                "font-weight": "bold",
-            },
-        },
-        {
-            "selector": "node[is_target]",
-            "style": {
-                "background-color": "#E45756",
-                "shape": "rectangle",
-                "width": 60,
-                "height": 40,
-                "font-weight": "bold",
-            },
-        },
-        {
-            "selector": "edge",
-            "style": {
-                "curve-style": "bezier",
-                "width": 2,
-                "line-color": "#ccc",
-                "target-arrow-shape": "triangle",
-                "target-arrow-color": "#ccc",
-                "opacity": 0.7,
-            },
-        },
-        {
-            "selector": "edge[protocol = 'udp']",
-            "style": {
-                "line-color": PROTOCOL_COLORS["udp"],
-                "target-arrow-color": PROTOCOL_COLORS["udp"],
-            },
-        },
-        {
-            "selector": "edge[protocol = 'tcp']",
-            "style": {
-                "line-color": PROTOCOL_COLORS["tcp"],
-                "target-arrow-color": PROTOCOL_COLORS["tcp"],
-            },
-        },
-        {
-            "selector": "edge[protocol = 'icmp']",
-            "style": {
-                "line-color": PROTOCOL_COLORS["icmp"],
-                "target-arrow-color": PROTOCOL_COLORS["icmp"],
-            },
-        },
-    ]
 
 
 if __name__ == "__main__":

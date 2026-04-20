@@ -105,6 +105,12 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Directory to write JSON results (default: {DEFAULT_OUTPUT_DIR}).",
     )
     p.add_argument(
+        "-F",
+        "--force",
+        action="store_true",
+        help="Re-probe all targets, ignoring cached results.",
+    )
+    p.add_argument(
         "--no-viz",
         action="store_true",
         help="Skip launching the visualizer after probing.",
@@ -126,15 +132,17 @@ def _protocol_from_arg(val: str | None) -> list[Protocol]:
     return [Protocol(val)]
 
 
-def _start_visualizer(results_dir: str) -> None:
+def _start_visualizer(results_dir: str, targets: set[str] | None) -> None:
     from visualizer.app import create_app
 
-    app = create_app(results_dir=results_dir)
+    app = create_app(results_dir=results_dir, targets=targets)
     app.run(host="0.0.0.0", port=8050, debug=False, use_reloader=False)
 
 
-def _launch_visualizer_background(results_dir: Path) -> None:
-    thread = threading.Thread(target=_start_visualizer, args=(str(results_dir),), daemon=True)
+def _launch_visualizer_background(results_dir: Path, targets: set[str]) -> None:
+    thread = threading.Thread(
+        target=_start_visualizer, args=(str(results_dir), targets), daemon=True
+    )
     thread.start()
     time.sleep(1.5)
     print("Visualizer running at http://localhost:8050 — press Ctrl+C to exit.")
@@ -151,51 +159,90 @@ def run(args: argparse.Namespace) -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    (output_dir / ".targets").write_text("\n".join(targets) + "\n")
+
+    if args.force:
+        for f in output_dir.glob("*.json"):
+            f.unlink()
+
+    cached_results: list[TracerouteResult] = []
+    targets_to_probe: list[str] = []
+
+    if not args.force:
+        for t in targets:
+            result_path = output_dir / f"{t}.json"
+            if result_path.exists():
+                try:
+                    result = TracerouteResult.from_json(result_path)
+                    if result.probing_complete:
+                        result.cached = True
+                        result.to_json(result_path)
+                        cached_results.append(result)
+                        print(f"  {t} — cached ({len(result.hops)} hop(s))")
+                        continue
+                except Exception:
+                    pass
+            targets_to_probe.append(t)
+    else:
+        targets_to_probe = list(targets)
+
+    needs_probing = len(targets_to_probe) > 0
+
+    if not needs_probing and not cached_results:
+        print("Nothing to do — no targets found.", file=sys.stderr)
+        sys.exit(1)
+
+    if not needs_probing:
+        print(f"All {len(cached_results)} target(s) cached — no probing needed.")
+
     if not args.no_viz:
-        _launch_visualizer_background(output_dir)
+        _launch_visualizer_background(output_dir, set(targets))
 
-    proto_list = ", ".join(p.value for p in protocols)
-    print(f"Probing {len(targets)} target(s) with protocol(s): {proto_list}")
+    results: list[TracerouteResult] = list(cached_results)
 
-    results: list[TracerouteResult] = []
-    probe_configs = {
-        t: ProbeConfig(
-            target=t,
-            min_ttl=args.min_ttl,
-            max_ttl=args.max_ttl,
-            queries=args.queries,
-            port=args.port,
-            timeout=args.timeout,
-            wait=args.wait,
-            packet_size=args.size,
-            protocols=protocols,
-            output_path=output_dir / f"{t}.json",
-        )
-        for t in targets
-    }
+    if needs_probing:
+        proto_list = ", ".join(p.value for p in protocols)
+        print(f"Probing {len(targets_to_probe)} target(s) with protocol(s): {proto_list}")
 
-    with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        future_to_target = {
-            executor.submit(trace_single_target, cfg): cfg.target for cfg in probe_configs.values()
+        probe_configs = {
+            t: ProbeConfig(
+                target=t,
+                min_ttl=args.min_ttl,
+                max_ttl=args.max_ttl,
+                queries=args.queries,
+                port=args.port,
+                timeout=args.timeout,
+                wait=args.wait,
+                packet_size=args.size,
+                protocols=protocols,
+                output_path=output_dir / f"{t}.json",
+            )
+            for t in targets_to_probe
         }
-        for future in as_completed(future_to_target):
-            target = future_to_target[future]
-            try:
-                result = future.result()
-            except Exception as exc:
-                print(f"Error probing {target}: {exc}", file=sys.stderr)
-                continue
 
-            if not args.no_dns:
-                resolve_result(result)
-                result.to_json(output_dir / f"{target}.json")
+        with ThreadPoolExecutor(max_workers=args.workers) as executor:
+            future_to_target = {
+                executor.submit(trace_single_target, cfg): cfg.target
+                for cfg in probe_configs.values()
+            }
+            for future in as_completed(future_to_target):
+                target = future_to_target[future]
+                try:
+                    result = future.result()
+                except Exception as exc:
+                    print(f"Error probing {target}: {exc}", file=sys.stderr)
+                    continue
 
-            results.append(result)
-            dest = "reached" if result.destination_reached else "not reached"
-            print(f"  {target} — {len(result.hops)} hop(s), destination {dest}")
+                if not args.no_dns:
+                    resolve_result(result)
+                    result.to_json(output_dir / f"{target}.json")
+
+                results.append(result)
+                dest = "reached" if result.destination_reached else "not reached"
+                print(f"  {target} — {len(result.hops)} hop(s), destination {dest}")
 
     clear_cache()
-    print(f"Probing complete. {len(results)} result(s) written to {output_dir}/")
+    print(f"Done. {len(results)} result(s) in {output_dir}/ ({len(cached_results)} cached)")
 
     if not args.no_viz:
         try:

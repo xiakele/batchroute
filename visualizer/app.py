@@ -25,12 +25,14 @@ cyto.load_extra_layouts()
 POLL_INTERVAL_MS = 2000
 
 
-def _load_results(results_dir: str) -> list[TracerouteResult]:
+def _load_results(results_dir: str, targets: set[str] | None = None) -> list[TracerouteResult]:
     results: list[TracerouteResult] = []
     path = Path(results_dir)
     if not path.exists():
         return results
     for f in sorted(path.glob("*.json")):
+        if targets is not None and f.stem not in targets:
+            continue
         try:
             results.append(TracerouteResult.from_json(f))
         except Exception:
@@ -55,13 +57,20 @@ def _build_graph_elements(results: list[TracerouteResult]) -> list[dict]:
             if not result.probing_complete and max_ttl > 0:
                 label += f"\n({current_hops} hops)"
 
+            if result.cached:
+                classes = "target cached"
+            elif result.probing_complete:
+                classes = "target complete"
+            else:
+                classes = "target probing"
+
             nodes[target_id] = {
                 "data": {
                     "id": target_id,
                     "label": label,
                     "is_target": True,
                 },
-                "classes": ("target probing" if not result.probing_complete else "target complete"),
+                "classes": classes,
             }
 
         by_protocol: dict[str, list] = {}
@@ -160,7 +169,9 @@ def _build_progress_table(results: list[TracerouteResult]) -> html.Table:
     for result in results:
         current_hops = len(set(h.ttl for h in result.hops))
 
-        if result.probing_complete:
+        if result.cached:
+            status = html.Span("Cached", className="badge badge-cached")
+        elif result.probing_complete:
             status = html.Span("Complete", className="badge badge-complete")
         else:
             status = html.Span("Probing", className="badge badge-probing")
@@ -264,7 +275,7 @@ def _build_loss_chart(results: list[TracerouteResult]) -> go.Figure:
     return fig
 
 
-def create_app(results_dir: str = "results") -> Dash:
+def create_app(results_dir: str = "results", targets: set[str] | None = None) -> Dash:
     app = Dash(__name__, suppress_callback_exceptions=True, update_title="")
     app.title = "batchroute"
 
@@ -384,7 +395,7 @@ def create_app(results_dir: str = "results") -> Dash:
         Input("poll-interval", "n_intervals"),
     )
     def update_graph(_n: int) -> tuple:
-        results = _load_results(results_dir)
+        results = _load_results(results_dir, targets)
         elements = _build_graph_elements(results)
         stats = _build_stats_bar(results)
         table = _build_progress_table(results)
@@ -421,6 +432,10 @@ if __name__ == "__main__":
         help="Directory containing JSON result files.",
     )
     args = parser.parse_args()
-    app = create_app(results_dir=args.results_dir)
+    manifest = Path(args.results_dir) / ".targets"
+    targets: set[str] | None = None
+    if manifest.exists():
+        targets = {line.strip() for line in manifest.read_text().splitlines() if line.strip()}
+    app = create_app(results_dir=args.results_dir, targets=targets)
     print("Launching visualizer at http://localhost:8050 ...")
     app.run(host="0.0.0.0", port=8050, debug=False)

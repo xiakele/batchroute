@@ -50,12 +50,14 @@ class TracerouteResult:
     hops: list[Hop] = field(default_factory=list)
     destination_reached: bool = False
     probing_complete: bool = False
+    cached: bool = False
 
     def to_dict(self) -> dict:
         return {
             "target": self.target,
             "destination_reached": self.destination_reached,
             "probing_complete": self.probing_complete,
+            "cached": self.cached,
             "hops": [h.to_dict() for h in self.hops],
         }
 
@@ -65,6 +67,7 @@ class TracerouteResult:
             target=d["target"],
             destination_reached=d.get("destination_reached", False),
             probing_complete=d.get("probing_complete", False),
+            cached=d.get("cached", False),
             hops=[Hop.from_dict(h) for h in d.get("hops", [])],
         )
 

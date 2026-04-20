@@ -11,6 +11,7 @@ PROTOCOL_COLORS = {
 STATUS_COLORS = {
     "probing": "#E8A849",
     "complete": "#5B9E6F",
+    "cached": "#7B8FA0",
 }
 
 CYTO_BG = "#F5F5F5"
@@ -69,7 +70,7 @@ def cytoscape_stylesheet() -> list[dict]:
         {
             "selector": "node.target.complete",
             "style": {
-                "background-color": "#C46B6B",
+                "background-color": STATUS_COLORS["complete"],
                 "shape": "rectangle",
                 "width": 60,
                 "height": 36,
@@ -89,6 +90,17 @@ def cytoscape_stylesheet() -> list[dict]:
                 "border-width": 2,
                 "border-color": "#D4922E",
                 "border-style": "dashed",
+            },
+        },
+        {
+            "selector": "node.target.cached",
+            "style": {
+                "background-color": STATUS_COLORS["cached"],
+                "shape": "rectangle",
+                "width": 60,
+                "height": 36,
+                "font-weight": "bold",
+                "font-size": "10px",
             },
         },
         {

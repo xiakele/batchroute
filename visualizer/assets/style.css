@@ -158,6 +158,11 @@ body {
   color: #fff;
 }
 
+.badge-cached {
+  background: #7b8fa0;
+  color: #fff;
+}
+
 .badge-dest-reached {
   color: #5b9e6f;
 }

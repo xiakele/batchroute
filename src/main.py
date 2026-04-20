@@ -111,6 +111,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Re-probe all targets, ignoring cached results.",
     )
     p.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Skip confirmation prompt when using --force.",
+    )
+    p.add_argument(
         "--no-viz",
         action="store_true",
         help="Skip launching the visualizer after probing.",
@@ -156,14 +162,37 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     protocols = _protocol_from_arg(args.protocol)
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    (output_dir / ".targets").write_text("\n".join(targets) + "\n")
+    output_dir = Path(args.output_dir).resolve()
 
     if args.force:
-        for f in output_dir.glob("*.json"):
-            f.unlink()
+        existing = list(output_dir.glob("*.json")) if output_dir.exists() else []
+        print(f"Results directory: {output_dir}")
+        if existing:
+            target_stems = {f"{t}.json" for t in targets}
+            to_overwrite = [f for f in existing if f.name in target_stems]
+            print(f"  {len(to_overwrite)} result file(s) will be overwritten.")
+            if not args.yes and sys.stdin.isatty():
+                try:
+                    answer = input("Continue? [y/N] ").strip().lower()
+                except EOFError:
+                    answer = "y"
+                if answer != "y":
+                    print("Aborted.")
+                    sys.exit(0)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for t in targets:
+            p = output_dir / f"{t}.json"
+            if p.exists():
+                p.unlink()
+        (output_dir / ".targets").unlink(missing_ok=True)
+    else:
+        existing = list(output_dir.glob("*.json")) if output_dir.exists() else []
+        print(f"Results directory: {output_dir}")
+        if existing:
+            print(f"  {len(existing)} existing result file(s) found.")
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    (output_dir / ".targets").write_text("\n".join(targets) + "\n")
 
     cached_results: list[TracerouteResult] = []
     targets_to_probe: list[str] = []

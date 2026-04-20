@@ -18,6 +18,13 @@
 - `src/prober.py` handles probing and writes partial JSON updates during probing, not just a final file.
 - `visualizer/app.py` is a Dash app that polls `results/` every 2 seconds and is designed to show nodes appearing in real time.
 - Visualizer styling is split between `visualizer/assets/style.css` (page CSS auto-served by Dash) and `visualizer/styles.py` (design tokens, Plotly layout, Cytoscape stylesheet).
+- `TracerouteResult` in `src/models.py` has a `cached` field; once set, it persists to JSON and is used by the visualizer to distinguish cached vs fresh results.
+
+## Caching & Output
+- Targets with a complete result JSON (`probing_complete=True`) in the output directory are reused without re-probing by default.
+- `--force` / `-F` re-probes all targets; it deletes only per-target `.json` files and the `.targets` manifest — never other files in the output directory.
+- When `--force` would overwrite files, the CLI prints the absolute results directory and asks for confirmation (auto-skipped if stdin is not a TTY, or if `-y`/`--yes` is passed).
+- A `.targets` manifest is written to the output directory on every run so the visualizer only loads results for the current target list.
 
 ## Behavior Quirks
 - By default, the CLI launches the Dash server before probing starts, opens `http://localhost:8050`, and then blocks after probing so the UI stays up. Use `--no-viz` for non-interactive runs.

@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 import dash_cytoscape as cyto
+import flask.cli
 import plotly.graph_objects as go
 from dash import Dash, dcc, html
 from dash.dependencies import Input, Output
@@ -277,6 +278,8 @@ def _build_loss_chart(results: list[TracerouteResult]) -> go.Figure:
 
 def create_app(results_dir: str = "results", targets: set[str] | None = None) -> Dash:
     app = Dash(__name__, suppress_callback_exceptions=True, update_title="")
+    app.logger.setLevel(logging.WARNING)
+    flask.cli.show_server_banner = lambda *a, **kw: None
     app.title = "batchroute"
 
     app.layout = html.Div(

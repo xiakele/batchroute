@@ -64,16 +64,28 @@ def cytoscape_stylesheet() -> list[dict]:
                 "text-valign": "center",
                 "text-halign": "center",
                 "font-size": "10px",
-                "width": "mapData(rtt, 0, 200, 30, 54)",
-                "height": "mapData(rtt, 0, 200, 30, 54)",
+                "width": 30,
+                "height": 30,
                 "background-color": "#7A7A8E",
                 "color": "#fff",
                 "text-outline-color": "#5A5A6E",
                 "text-outline-width": 1,
                 "font-family": '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
                 "border-width": 2,
-                "border-color": f"mapData(loss_rate, 0, 1, {LOSS_LOW_COLOR}, {LOSS_HIGH_COLOR})",
                 "border-opacity": 0.85,
+            },
+        },
+        {
+            "selector": "node[rtt]",
+            "style": {
+                "width": "mapData(rtt, 0, 200, 30, 54)",
+                "height": "mapData(rtt, 0, 200, 30, 54)",
+            },
+        },
+        {
+            "selector": "node[loss_rate]",
+            "style": {
+                "border-color": f"mapData(loss_rate, 0, 1, {LOSS_LOW_COLOR}, {LOSS_HIGH_COLOR})",
             },
         },
         {

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import platform
+import re
+import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,6 +24,38 @@ from src.config import (
     Protocol,
 )
 from src.models import Hop, TracerouteResult
+
+_ARP_LINE_RE = re.compile(
+    r"^\s*(\d+\.\d+\.\d+\.\d+)\s+([0-9a-fA-F]{2}(?:[-:][0-9a-fA-F]{2}){5})\s",
+)
+
+
+def _prime_arp_cache_from_os() -> None:
+    """Populate scapy's ARP cache from the OS ARP table.
+
+    On Windows Wi-Fi adapters, Npcap frequently fails to observe ARP replies,
+    so scapy's own resolution returns None and it falls back to broadcast —
+    emitting "MAC address to reach destination not found. Using broadcast."
+    repeatedly. Pre-seeding the cache from the OS table avoids that path.
+    """
+    if platform.system() != "Windows":
+        return
+    try:
+        proc = subprocess.run(
+            ["arp", "-a"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return
+    for line in proc.stdout.splitlines():
+        m = _ARP_LINE_RE.match(line)
+        if not m:
+            continue
+        ip, mac = m.group(1), m.group(2).replace("-", ":").lower()
+        scapy_conf.netcache.arp_cache[ip] = mac  # type: ignore[attr-defined]
 
 
 @dataclass
@@ -88,6 +123,7 @@ def _is_time_exceeded(response: Any) -> bool:
 
 
 def trace_single_target(config: ProbeConfig) -> TracerouteResult:
+    _prime_arp_cache_from_os()
     result = TracerouteResult(target=config.target)
     destination_reached = False
 

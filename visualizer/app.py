@@ -46,9 +46,14 @@ def _load_results(results_dir: str, targets: set[str] | None = None) -> list[Tra
     return results
 
 
-def _build_graph_elements(results: list[TracerouteResult]) -> list[dict]:
+def _build_graph_elements(
+    results: list[TracerouteResult], protocols: set[str] | None = None
+) -> list[dict]:
     nodes: dict[str, dict] = {}
     edges: dict[str, dict] = {}
+
+    if protocols is None:
+        protocols = set(PROTOCOL_COLORS.keys())
 
     nodes[SOURCE_NODE_ID] = {
         "data": {"id": SOURCE_NODE_ID, "label": "Source"},
@@ -90,6 +95,8 @@ def _build_graph_elements(results: list[TracerouteResult]) -> list[dict]:
             by_protocol.setdefault(hop.protocol.value, []).append(hop)
 
         for proto_name, hops in by_protocol.items():
+            if proto_name not in protocols:
+                continue
             prev_id = SOURCE_NODE_ID
             for hop in hops:
                 if hop.ip is None:
@@ -245,18 +252,34 @@ def _build_progress_table(results: list[TracerouteResult]) -> html.Div:
 
 
 def _build_legend() -> html.Div:
-    proto_row = html.Div(
-        className="legend-row",
-        children=[
-            html.Span(
-                className="legend-item",
-                children=[
-                    html.Span(className="legend-dot", style={"backgroundColor": color}),
-                    html.Span(proto.upper()),
-                ],
-            )
+    all_protos = list(PROTOCOL_COLORS.keys())
+
+    select_all = dcc.Checklist(
+        id="protocol-select-all",
+        options=[{"label": " Select All", "value": "all"}],
+        value=["all"],
+        className="legend-select-all",
+    )
+
+    proto_checklist = dcc.Checklist(
+        id="protocol-filter",
+        options=[
+            {
+                "label": html.Span(
+                    [
+                        html.Span(
+                            className="legend-dot",
+                            style={"backgroundColor": color},
+                        ),
+                        f" {proto.upper()}",
+                    ]
+                ),
+                "value": proto,
+            }
             for proto, color in PROTOCOL_COLORS.items()
         ],
+        value=all_protos,
+        className="legend-protocols",
     )
 
     encoding_row = html.Div(
@@ -292,8 +315,14 @@ def _build_legend() -> html.Div:
     return html.Div(
         className="legend",
         children=[
-            html.Div("Protocol", className="legend-group-title"),
-            proto_row,
+            html.Div(
+                className="legend-protocol-header",
+                children=[
+                    html.Div("Protocol", className="legend-group-title"),
+                    select_all,
+                ],
+            ),
+            proto_checklist,
             html.Div("Encoding", className="legend-group-title"),
             encoding_row,
         ],
@@ -363,7 +392,12 @@ def _edge_details(data: dict) -> list:
     return [html.Div("Link", className="details-kind"), _format_details_list(pairs)]
 
 
-def _build_rtt_chart(results: list[TracerouteResult], per_target: bool) -> go.Figure:
+def _build_rtt_chart(
+    results: list[TracerouteResult], per_target: bool, protocols: set[str] | None = None
+) -> go.Figure:
+    if protocols is None:
+        protocols = set(PROTOCOL_COLORS.keys())
+
     fig = go.Figure()
 
     if per_target:
@@ -372,13 +406,18 @@ def _build_rtt_chart(results: list[TracerouteResult], per_target: bool) -> go.Fi
             for hop in result.hops:
                 by_protocol.setdefault(hop.protocol.value, []).append(hop)
             for proto_name, hops in by_protocol.items():
+                if proto_name not in protocols:
+                    continue
                 fig.add_trace(
                     go.Scatter(
                         x=[h.ttl for h in hops],
                         y=[h.avg_rtt for h in hops],
                         mode="lines+markers",
                         name=f"{result.target} ({proto_name})",
-                        line=dict(color=PROTOCOL_COLORS.get(proto_name, "#999"), width=1.2),
+                        line=dict(
+                            color=PROTOCOL_COLORS.get(proto_name, "#999"),
+                            width=1.2,
+                        ),
                         marker=dict(size=4),
                         opacity=0.4,
                         connectgaps=True,
@@ -388,6 +427,8 @@ def _build_rtt_chart(results: list[TracerouteResult], per_target: bool) -> go.Fi
 
     agg = aggregate_hops_by_protocol(results)
     for proto_name, series in agg.items():
+        if proto_name not in protocols:
+            continue
         fig.add_trace(
             go.Scatter(
                 x=[s[0] for s in series],
@@ -410,7 +451,12 @@ def _build_rtt_chart(results: list[TracerouteResult], per_target: bool) -> go.Fi
     return fig
 
 
-def _build_loss_chart(results: list[TracerouteResult], per_target: bool) -> go.Figure:
+def _build_loss_chart(
+    results: list[TracerouteResult], per_target: bool, protocols: set[str] | None = None
+) -> go.Figure:
+    if protocols is None:
+        protocols = set(PROTOCOL_COLORS.keys())
+
     fig = go.Figure()
 
     if per_target:
@@ -419,6 +465,8 @@ def _build_loss_chart(results: list[TracerouteResult], per_target: bool) -> go.F
             for hop in result.hops:
                 by_protocol.setdefault(hop.protocol.value, []).append(hop)
             for proto_name, hops in by_protocol.items():
+                if proto_name not in protocols:
+                    continue
                 fig.add_trace(
                     go.Scatter(
                         x=[h.ttl for h in hops],
@@ -436,6 +484,8 @@ def _build_loss_chart(results: list[TracerouteResult], per_target: bool) -> go.F
 
     agg = aggregate_hops_by_protocol(results)
     for proto_name, series in agg.items():
+        if proto_name not in protocols:
+            continue
         fig.add_trace(
             go.Bar(
                 x=[s[0] for s in series],
@@ -602,18 +652,50 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
         [
             Input("poll-interval", "n_intervals"),
             Input("per-target-toggle", "value"),
+            Input("protocol-filter", "value"),
         ],
     )
-    def update_graph(_n: int, per_target_value: list[str]) -> tuple:
+    def update_graph(_n: int, per_target_value: list[str], proto_value: list[str]) -> tuple:
         results = _load_results(results_dir, targets)
         per_target = bool(per_target_value)
+        protocols = set(proto_value) if proto_value else set()
         return (
-            _build_graph_elements(results),
+            _build_graph_elements(results, protocols),
             _build_stats_bar(results),
             _build_progress_table(results),
-            _build_rtt_chart(results, per_target),
-            _build_loss_chart(results, per_target),
+            _build_rtt_chart(results, per_target, protocols),
+            _build_loss_chart(results, per_target, protocols),
         )
+
+    @app.callback(
+        [Output("protocol-select-all", "value"), Output("protocol-filter", "value")],
+        [
+            Input("protocol-select-all", "value"),
+            Input("protocol-filter", "value"),
+        ],
+    )
+    def sync_protocol_checkboxes(
+        select_all: list[str] | None, protocols: list[str] | None
+    ) -> tuple:
+        from dash import callback_context
+
+        all_protos = list(PROTOCOL_COLORS.keys())
+        ctx = callback_context
+
+        if not ctx.triggered:
+            return ["all"], all_protos
+
+        triggered_id = ctx.triggered[0]["prop_id"]
+
+        if triggered_id == "protocol-select-all.value":
+            if select_all and "all" in select_all:
+                return ["all"], all_protos
+            return [], []
+
+        protocols = protocols or []
+        if set(protocols) == set(all_protos):
+            return ["all"], protocols
+        return [], protocols
 
     @app.callback(
         Output("element-details", "children"),

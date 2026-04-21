@@ -373,6 +373,43 @@ body {
   margin-left: 2px;
 }
 
+/* ── Legend protocol checkboxes ── */
+
+.legend-protocol-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.legend-select-all {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.legend-select-all label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.legend-protocols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.legend-protocols label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
 /* ── Chart controls ── */
 
 .chart-controls {

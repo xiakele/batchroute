@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import statistics
 from pathlib import Path
 
 import dash_cytoscape as cyto
@@ -13,9 +14,12 @@ from dash.dependencies import Input, Output
 from src.models import TracerouteResult
 from visualizer.styles import (
     CYTO_BG,
+    LOSS_HIGH_COLOR,
+    LOSS_LOW_COLOR,
     PLOTLY_LAYOUT,
     PROTOCOL_COLORS,
     SOURCE_NODE_ID,
+    aggregate_hops_by_protocol,
     cytoscape_stylesheet,
 )
 
@@ -24,6 +28,7 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 cyto.load_extra_layouts()
 
 POLL_INTERVAL_MS = 2000
+AGGREGATE_DEFAULT_THRESHOLD = 20
 
 
 def _load_results(results_dir: str, targets: set[str] | None = None) -> list[TracerouteResult]:
@@ -64,12 +69,18 @@ def _build_graph_elements(results: list[TracerouteResult]) -> list[dict]:
                 classes = "target complete"
             else:
                 classes = "target probing"
+            if result.probing_complete and not result.destination_reached:
+                classes += " unreachable"
 
             nodes[target_id] = {
                 "data": {
                     "id": target_id,
                     "label": label,
                     "is_target": True,
+                    "destination_reached": result.destination_reached,
+                    "probing_complete": result.probing_complete,
+                    "cached": result.cached,
+                    "hop_count": current_hops,
                 },
                 "classes": classes,
             }
@@ -88,8 +99,10 @@ def _build_graph_elements(results: list[TracerouteResult]) -> list[dict]:
                             "data": {
                                 "id": node_id,
                                 "label": "*",
-                                "rtt": None,
+                                "rtt": 0,
                                 "loss_rate": 1.0,
+                                "missing": True,
+                                "ttl": hop.ttl,
                             },
                         }
                 else:
@@ -100,8 +113,9 @@ def _build_graph_elements(results: list[TracerouteResult]) -> list[dict]:
                                 "id": node_id,
                                 "label": _node_label(hop.ip, hop.hostname),
                                 "hostname": hop.hostname,
-                                "rtt": hop.avg_rtt,
+                                "rtt": hop.avg_rtt if hop.avg_rtt is not None else 0,
                                 "loss_rate": hop.loss_rate,
+                                "ttl": hop.ttl,
                             },
                         }
 
@@ -147,16 +161,40 @@ def _node_label(ip: str, hostname: str | None) -> str:
     return ip
 
 
-def _build_stats_bar(results: list[TracerouteResult]) -> str:
+def _metric_chip(label: str, value: str) -> html.Span:
+    return html.Span(
+        className="metric-chip",
+        children=[
+            html.Span(label, className="metric-chip-label"),
+            html.Span(value, className="metric-chip-value"),
+        ],
+    )
+
+
+def _build_stats_bar(results: list[TracerouteResult]) -> list:
     if not results:
-        return "Waiting for probe data..."
-    complete = sum(1 for r in results if r.probing_complete)
+        return [html.Span("Waiting for probe data…", className="details-empty")]
+
     total = len(results)
-    return f"{complete} of {total} target(s) complete"
+    complete = sum(1 for r in results if r.probing_complete)
+    reached = sum(1 for r in results if r.probing_complete and r.destination_reached)
+
+    hop_counts = [len({h.ttl for h in r.hops}) for r in results if r.hops]
+    avg_hops = f"{statistics.mean(hop_counts):.1f}" if hop_counts else "—"
+
+    all_losses = [h.loss_rate for r in results for h in r.hops]
+    overall_loss = f"{statistics.mean(all_losses) * 100:.1f}%" if all_losses else "—"
+
+    return [
+        _metric_chip("Targets", f"{complete}/{total}"),
+        _metric_chip("Reached", str(reached)),
+        _metric_chip("Avg hops", avg_hops),
+        _metric_chip("Loss", overall_loss),
+    ]
 
 
-def _build_progress_table(results: list[TracerouteResult]) -> html.Table:
-    rows = [
+def _build_progress_table(results: list[TracerouteResult]) -> html.Div:
+    header = html.Thead(
         html.Tr(
             [
                 html.Th("Target"),
@@ -165,10 +203,11 @@ def _build_progress_table(results: list[TracerouteResult]) -> html.Table:
                 html.Th("Dest."),
             ]
         )
-    ]
+    )
 
+    body_rows = []
     for result in results:
-        current_hops = len(set(h.ttl for h in result.hops))
+        current_hops = len({h.ttl for h in result.hops})
 
         if result.cached:
             status = html.Span("Cached", className="badge badge-cached")
@@ -185,10 +224,10 @@ def _build_progress_table(results: list[TracerouteResult]) -> html.Table:
         else:
             dest = html.Span("\u2014", className="badge-dest-pending")
 
-        rows.append(
+        body_rows.append(
             html.Tr(
                 [
-                    html.Td(result.target),
+                    html.Td(result.target, className="target-cell"),
                     html.Td(str(current_hops)),
                     html.Td(status),
                     html.Td(dest),
@@ -196,81 +235,223 @@ def _build_progress_table(results: list[TracerouteResult]) -> html.Table:
             )
         )
 
-    return html.Table(rows, className="progress-table")
+    return html.Div(
+        className="progress-table-wrap",
+        children=html.Table(
+            className="progress-table",
+            children=[header, html.Tbody(body_rows)],
+        ),
+    )
 
 
 def _build_legend() -> html.Div:
-    items = []
-    for proto, color in PROTOCOL_COLORS.items():
-        items.append(
-            html.Div(
+    proto_row = html.Div(
+        className="legend-row",
+        children=[
+            html.Span(
                 className="legend-item",
                 children=[
                     html.Span(className="legend-dot", style={"backgroundColor": color}),
                     html.Span(proto.upper()),
                 ],
             )
-        )
-    return html.Div(className="legend", children=items)
+            for proto, color in PROTOCOL_COLORS.items()
+        ],
+    )
+
+    encoding_row = html.Div(
+        className="legend-row",
+        children=[
+            html.Span(
+                className="legend-item",
+                title="Node size scales with average RTT",
+                children=[
+                    html.Span(className="legend-size-sm"),
+                    html.Span(className="legend-size-lg"),
+                    html.Span("RTT"),
+                ],
+            ),
+            html.Span(
+                className="legend-item",
+                title="Node border / edge color reflects packet loss",
+                children=[
+                    html.Span(
+                        className="legend-bar",
+                        style={
+                            "background": (
+                                f"linear-gradient(to right, {LOSS_LOW_COLOR}, {LOSS_HIGH_COLOR})"
+                            )
+                        },
+                    ),
+                    html.Span("Loss"),
+                ],
+            ),
+        ],
+    )
+
+    return html.Div(
+        className="legend",
+        children=[
+            html.Div("Protocol", className="legend-group-title"),
+            proto_row,
+            html.Div("Encoding", className="legend-group-title"),
+            encoding_row,
+        ],
+    )
 
 
-def _build_rtt_chart(results: list[TracerouteResult]) -> go.Figure:
+def _format_details_list(pairs: list[tuple[str, str]]) -> html.Dl:
+    children: list = []
+    for k, v in pairs:
+        children.append(html.Dt(k))
+        children.append(html.Dd(v))
+    return html.Dl(className="details-list", children=children)
+
+
+def _empty_details() -> list:
+    return [html.Div("Click a node or edge to see details.", className="details-empty")]
+
+
+def _node_details(data: dict) -> list:
+    if data.get("id") == SOURCE_NODE_ID:
+        kind = "Source"
+        pairs: list[tuple[str, str]] = [("Role", "Probe origin")]
+    elif data.get("is_target"):
+        kind = "Destination"
+        pairs = [("IP", str(data.get("id", "?")))]
+        if data.get("hostname"):
+            pairs.append(("Hostname", str(data["hostname"])))
+        pairs.append(("Hops", str(data.get("hop_count", "—"))))
+        if data.get("cached"):
+            status_text = "Cached"
+        elif data.get("probing_complete"):
+            status_text = "Reached" if data.get("destination_reached") else "Unreachable"
+        else:
+            status_text = "Probing"
+        pairs.append(("Status", status_text))
+    elif data.get("missing"):
+        kind = "Missing hop"
+        pairs = [
+            ("TTL", str(data.get("ttl", "—"))),
+            ("Response", "Timed out"),
+        ]
+    else:
+        kind = "Router"
+        pairs = [("IP", str(data.get("id", "?")))]
+        if data.get("hostname"):
+            pairs.append(("Hostname", str(data["hostname"])))
+        if data.get("ttl") is not None:
+            pairs.append(("TTL", str(data["ttl"])))
+        rtt = data.get("rtt")
+        pairs.append(("Avg RTT", f"{rtt:.2f} ms" if rtt else "—"))
+        loss = data.get("loss_rate")
+        pairs.append(("Loss", f"{loss * 100:.1f}%" if loss is not None else "—"))
+
+    return [html.Div(kind, className="details-kind"), _format_details_list(pairs)]
+
+
+def _edge_details(data: dict) -> list:
+    avg_rtt = data.get("avg_rtt")
+    loss = data.get("loss_rate")
+    pairs = [
+        ("Protocol", str(data.get("protocol", "?")).upper()),
+        ("From", str(data.get("source", "?"))),
+        ("To", str(data.get("target", "?"))),
+        ("Avg RTT", f"{avg_rtt:.2f} ms" if avg_rtt else "—"),
+        ("Loss", f"{loss * 100:.1f}%" if loss is not None else "—"),
+    ]
+    return [html.Div("Link", className="details-kind"), _format_details_list(pairs)]
+
+
+def _build_rtt_chart(results: list[TracerouteResult], per_target: bool) -> go.Figure:
     fig = go.Figure()
-    for result in results:
-        by_protocol: dict[str, list] = {}
-        for hop in result.hops:
-            by_protocol.setdefault(hop.protocol.value, []).append(hop)
 
-        for proto_name, hops in by_protocol.items():
-            ttls = [h.ttl for h in hops]
-            avg_rtts = [h.avg_rtt for h in hops]
-            fig.add_trace(
-                go.Scatter(
-                    x=ttls,
-                    y=avg_rtts,
-                    mode="lines+markers",
-                    name=f"{result.target} ({proto_name})",
-                    line=dict(color=PROTOCOL_COLORS.get(proto_name, "#999"), width=2),
-                    marker=dict(size=5),
-                    connectgaps=True,
+    if per_target:
+        for result in results:
+            by_protocol: dict[str, list] = {}
+            for hop in result.hops:
+                by_protocol.setdefault(hop.protocol.value, []).append(hop)
+            for proto_name, hops in by_protocol.items():
+                fig.add_trace(
+                    go.Scatter(
+                        x=[h.ttl for h in hops],
+                        y=[h.avg_rtt for h in hops],
+                        mode="lines+markers",
+                        name=f"{result.target} ({proto_name})",
+                        line=dict(color=PROTOCOL_COLORS.get(proto_name, "#999"), width=1.2),
+                        marker=dict(size=4),
+                        opacity=0.4,
+                        connectgaps=True,
+                        hovertemplate="TTL %{x}<br>%{y:.1f} ms<extra>%{fullData.name}</extra>",
+                    )
                 )
+
+    agg = aggregate_hops_by_protocol(results)
+    for proto_name, series in agg.items():
+        fig.add_trace(
+            go.Scatter(
+                x=[s[0] for s in series],
+                y=[s[1] for s in series],
+                mode="lines+markers",
+                name=f"{proto_name.upper()} (median)",
+                line=dict(color=PROTOCOL_COLORS.get(proto_name, "#999"), width=2.5),
+                marker=dict(size=6),
+                connectgaps=True,
+                hovertemplate="TTL %{x}<br>%{y:.1f} ms<extra>%{fullData.name}</extra>",
             )
+        )
 
     fig.update_layout(
         **PLOTLY_LAYOUT,
-        title="RTT per Hop",
+        title=dict(text="RTT per Hop", font=dict(size=13)),
         xaxis_title="TTL",
         yaxis_title="RTT (ms)",
-        height=300,
     )
     return fig
 
 
-def _build_loss_chart(results: list[TracerouteResult]) -> go.Figure:
+def _build_loss_chart(results: list[TracerouteResult], per_target: bool) -> go.Figure:
     fig = go.Figure()
-    for result in results:
-        by_protocol: dict[str, list] = {}
-        for hop in result.hops:
-            by_protocol.setdefault(hop.protocol.value, []).append(hop)
 
-        for proto_name, hops in by_protocol.items():
-            ttls = [h.ttl for h in hops]
-            losses = [h.loss_rate * 100 for h in hops]
-            fig.add_trace(
-                go.Bar(
-                    x=ttls,
-                    y=losses,
-                    name=f"{result.target} ({proto_name})",
-                    marker_color=PROTOCOL_COLORS.get(proto_name, "#999"),
+    if per_target:
+        for result in results:
+            by_protocol: dict[str, list] = {}
+            for hop in result.hops:
+                by_protocol.setdefault(hop.protocol.value, []).append(hop)
+            for proto_name, hops in by_protocol.items():
+                fig.add_trace(
+                    go.Scatter(
+                        x=[h.ttl for h in hops],
+                        y=[h.loss_rate * 100 for h in hops],
+                        mode="markers",
+                        name=f"{result.target} ({proto_name})",
+                        marker=dict(
+                            color=PROTOCOL_COLORS.get(proto_name, "#999"),
+                            size=5,
+                            opacity=0.35,
+                        ),
+                        hovertemplate="TTL %{x}<br>%{y:.1f}%<extra>%{fullData.name}</extra>",
+                    )
                 )
+
+    agg = aggregate_hops_by_protocol(results)
+    for proto_name, series in agg.items():
+        fig.add_trace(
+            go.Bar(
+                x=[s[0] for s in series],
+                y=[s[2] * 100 for s in series],
+                name=f"{proto_name.upper()} (mean)",
+                marker_color=PROTOCOL_COLORS.get(proto_name, "#999"),
+                opacity=0.85,
+                hovertemplate="TTL %{x}<br>%{y:.1f}%<extra>%{fullData.name}</extra>",
             )
+        )
 
     fig.update_layout(
         **PLOTLY_LAYOUT,
-        title="Loss Rate per Hop",
+        title=dict(text="Loss Rate per Hop", font=dict(size=13)),
         xaxis_title="TTL",
         yaxis_title="Loss (%)",
-        height=300,
         barmode="group",
     )
     return fig
@@ -281,6 +462,8 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
     app.logger.setLevel(logging.WARNING)
     flask.cli.show_server_banner = lambda *a, **kw: None
     app.title = "batchroute"
+
+    initial_per_target = targets is None or len(targets) <= AGGREGATE_DEFAULT_THRESHOLD
 
     app.layout = html.Div(
         className="app-container",
@@ -309,9 +492,12 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
                                 },
                                 style={
                                     "width": "100%",
-                                    "height": "600px",
+                                    "height": "100%",
                                     "backgroundColor": CYTO_BG,
                                 },
+                                minZoom=0.2,
+                                maxZoom=3.0,
+                                wheelSensitivity=0.2,
                                 stylesheet=cytoscape_stylesheet(),
                             ),
                         ],
@@ -327,12 +513,12 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
                                         children=[
                                             html.Div(
                                                 className="card-title",
-                                                children="Node Details",
+                                                children="Details",
                                             ),
-                                            html.Pre(
-                                                id="node-details",
-                                                className="node-details-pre",
-                                                children="Click a node to see details.",
+                                            html.Div(
+                                                id="element-details",
+                                                className="details-block",
+                                                children=_empty_details(),
                                             ),
                                         ],
                                     ),
@@ -361,7 +547,7 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
                                         children=[
                                             html.Div(
                                                 className="card-title",
-                                                children="Protocol",
+                                                children="Legend",
                                             ),
                                             _build_legend(),
                                         ],
@@ -373,10 +559,28 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
                 ],
             ),
             html.Div(
+                className="chart-controls",
+                children=[
+                    dcc.Checklist(
+                        id="per-target-toggle",
+                        options=[{"label": " Per-target traces", "value": "on"}],
+                        value=["on"] if initial_per_target else [],
+                    ),
+                ],
+            ),
+            html.Div(
                 className="charts-grid",
                 children=[
-                    dcc.Graph(id="rtt-chart"),
-                    dcc.Graph(id="loss-chart"),
+                    dcc.Graph(
+                        id="rtt-chart",
+                        style={"height": "var(--chart-h)"},
+                        config={"displayModeBar": False},
+                    ),
+                    dcc.Graph(
+                        id="loss-chart",
+                        style={"height": "var(--chart-h)"},
+                        config={"displayModeBar": False},
+                    ),
                 ],
             ),
             dcc.Interval(
@@ -395,34 +599,45 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
             Output("rtt-chart", "figure"),
             Output("loss-chart", "figure"),
         ],
-        Input("poll-interval", "n_intervals"),
+        [
+            Input("poll-interval", "n_intervals"),
+            Input("per-target-toggle", "value"),
+        ],
     )
-    def update_graph(_n: int) -> tuple:
+    def update_graph(_n: int, per_target_value: list[str]) -> tuple:
         results = _load_results(results_dir, targets)
-        elements = _build_graph_elements(results)
-        stats = _build_stats_bar(results)
-        table = _build_progress_table(results)
-        rtt_fig = _build_rtt_chart(results)
-        loss_fig = _build_loss_chart(results)
-        return elements, stats, table, rtt_fig, loss_fig
+        per_target = bool(per_target_value)
+        return (
+            _build_graph_elements(results),
+            _build_stats_bar(results),
+            _build_progress_table(results),
+            _build_rtt_chart(results, per_target),
+            _build_loss_chart(results, per_target),
+        )
 
     @app.callback(
-        Output("node-details", "children"),
-        Input("topo-graph", "tapNodeData"),
+        Output("element-details", "children"),
+        [
+            Input("topo-graph", "tapNodeData"),
+            Input("topo-graph", "tapEdgeData"),
+        ],
     )
-    def show_node_details(data: dict | None) -> str:
-        if data is None:
-            return "Click a node to see details."
-        lines = [f"IP: {data.get('id', '?')}"]
-        if data.get("hostname"):
-            lines.append(f"Hostname: {data['hostname']}")
-        if data.get("rtt") is not None:
-            lines.append(f"Avg RTT: {data['rtt']:.2f} ms")
-        if data.get("loss_rate") is not None:
-            lines.append(f"Loss Rate: {data['loss_rate'] * 100:.1f}%")
-        if data.get("is_target"):
-            lines.append("Type: Destination")
-        return "\n".join(lines)
+    def show_element_details(node: dict | None, edge: dict | None) -> list:
+        from dash import callback_context
+
+        trig = callback_context.triggered
+        if not trig:
+            return _empty_details()
+        prop = trig[0].get("prop_id", "")
+        if prop.startswith("topo-graph.tapEdgeData") and edge:
+            return _edge_details(edge)
+        if prop.startswith("topo-graph.tapNodeData") and node:
+            return _node_details(node)
+        if node is not None:
+            return _node_details(node)
+        if edge is not None:
+            return _edge_details(edge)
+        return _empty_details()
 
     return app
 

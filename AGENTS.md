@@ -3,27 +3,28 @@
 ## Commands
 - Sync deps with `uv sync`.
 - CLI entrypoint is `uv run batchroute ...`.
-- Target files accept both IP addresses and domain names (forward DNS resolution via dnspython).
-- Real packet probing needs root on Linux because `scapy` sends raw packets. Use `sudo $(which uv) run batchroute -f <targets-file>` when exercising the prober end-to-end.
+- Real packet probing needs root on Linux because `scapy` sends raw packets. Use `sudo $(which uv) run batchroute -f <targets-file>` for end-to-end prober tests.
 - Standalone visualizer: `uv run python -m visualizer.app --results-dir results/`.
-- Mock data generator (for visualizer stress testing): `uv run python scripts/generate_mock_routes.py [--count 100] [--seed N] [--force]`.
+- Mock data generator (visualizer stress testing): `uv run python scripts/generate_mock_routes.py [--count 100] [--seed N] [--force]`.
 
 ## Verification Order
-- Run `uv run ruff check src/ visualizer/ scripts/`.
-- Run `uv run ruff format --check src/ visualizer/ scripts/`.
-- Run `uv run mypy src/ visualizer/ scripts/`.
-- `pre-commit` is installed and enforces the same checks plus whitespace / EOF fixers on every commit. Full run: `uv run pre-commit run --all-files`.
+- `uv run ruff check src/ visualizer/ scripts/`
+- `uv run ruff format --check src/ visualizer/ scripts/`
+- `uv run mypy src/ visualizer/ scripts/`
+- Full pre-commit run: `uv run pre-commit run --all-files`
 - There are no automated tests beyond lint / typecheck. For behavior checks, use `uv run batchroute --help` or a manual probe with a small targets file.
 
 ## Repo Structure
-- `src/main.py` is the only CLI entrypoint and wires the whole flow.
-- `src/parser.py` validates target entries — accepts both IPs (`ipaddress.ip_address`) and hostnames (DNS-label regex). Invalid hostnames print a warning and are skipped.
-- `src/resolver.py` handles both forward DNS (`resolve_hostname` for target domains) and reverse DNS (`resolve_single_ip` for hop hostnames). Both caches are cleared by `clear_cache()`.
-- `src/prober.py` handles probing and writes partial JSON updates during probing, not just a final file. `ProbeConfig.resolved_ip` is set for domain targets so scapy sends packets to the IP while `TracerouteResult.target` retains the original domain name.
-- `src/models.py`: `TracerouteResult` has `cached` and `resolved_ip` fields. `resolved_ip` stores the forward-resolved IP for domain targets (absent for IP targets). Serialized between `target` and `destination_reached` in JSON.
-- `visualizer/app.py` is a Dash app that polls `results/` every 2 seconds and is designed to show nodes appearing in real time.
-- Visualizer styling is split between `visualizer/assets/style.css` (page CSS auto-served by Dash) and `visualizer/styles.py` (design tokens, Plotly layout, Cytoscape stylesheet).
-- `scripts/generate_mock_routes.py` generates mock traceroute JSON files for visualizer stress testing. Output defaults to `mock_results/`.
+- `src/main.py` — sole CLI entrypoint; wires the whole flow.
+- `src/config.py` — constants and the `Protocol` enum (`udp`, `tcp`, `icmp`).
+- `src/parser.py` — validates targets as IPs or hostnames; invalid hostnames are warned and skipped.
+- `src/resolver.py` — forward DNS (`resolve_hostname`) and reverse DNS (`resolve_single_ip`). Both caches are cleared by `clear_cache()`.
+- `src/prober.py` — writes partial JSON updates during probing. `ProbeConfig.resolved_ip` is set for domain targets so scapy sends to the IP while `TracerouteResult.target` keeps the original domain name.
+- `src/models.py` — `TracerouteResult` carries `cached` and `resolved_ip`. `resolved_ip` is serialized between `target` and `destination_reached` in JSON.
+- `visualizer/app.py` — Dash app polling `results/` every 2 s.
+- `visualizer/assets/` — CSS and JS files auto-served by Dash. Any `.js` placed here is loaded in the page automatically.
+- `visualizer/styles.py` — design tokens, Plotly layout, and Cytoscape stylesheet.
+- `scripts/generate_mock_routes.py` — outputs to `mock_results/` by default.
 
 ## Caching & Output
 - Targets with a complete result JSON (`probing_complete=True`) in the output directory are reused without re-probing by default.
@@ -40,15 +41,16 @@
 - Default probing sends UDP, TCP SYN, and ICMP for each TTL step unless `-P` restricts the protocol.
 
 ## Visualizer Interactivity
-- Protocol checkboxes in the legend filter which protocol paths (UDP/TCP/ICMP) appear in the graph and charts.
-- Click-to-focus: clicking a target node in the Cytoscape graph highlights its path by dimming unrelated nodes/edges to 12% opacity. Clicking the same target again or clicking the Source node restores the full view. This is driven by a `focused-target` `dcc.Store`.
+- Protocol checkboxes in the legend filter which protocol paths appear in the graph and charts.
+- Click-to-focus: clicking a target node highlights its path by dimming unrelated nodes/edges to 12% opacity. Clicking the same target again or clicking the Source node restores the full view. Driven by a `focused-target` `dcc.Store`.
 - All Cytoscape elements must include an explicit `"classes": ""` key (even when empty) so Dash properly clears dynamic classes like `dimmed` on unfocus.
-- Domain targets display as `"domain.com\n(resolved.ip)"` in the graph. The resolved IP node is merged into the target block, not shown as a separate node.
+- Domain targets display as `"domain.com\n(resolved.ip)"` in the graph. The resolved IP node is merged into the target block, not shown separately.
+- **Dash-cytoscape gotcha:** the `global` prop (used to expose the `cy` instance on `window`) is not supported in the version 1.0.2 Python wrapper. If you need to access the underlying Cytoscape instance from JS, traverse the React fiber from the DOM node or use a standalone JS asset in `visualizer/assets/` instead.
 
 ## Typecheck / Packaging Notes
 - Python target is `>=3.12`.
 - Ruff line length is `100`.
-- `mypy` is configured with `explicit_package_bases = true` and `mypy_path = "."`; run it from the repo root as `uv run mypy src/ visualizer/ scripts/` to avoid module-path issues.
+- `mypy` is configured with `explicit_package_bases = true` and `mypy_path = "."`; run it from the repo root to avoid module-path issues.
 - `mypy` uses `disallow_untyped_defs = true` — all function signatures need type annotations.
 - Dash callback data (e.g. `tapNodeData`) returns `Any`; cast or validate before use to satisfy mypy.
-- The wheel package list only includes `src`; if packaging behavior matters, double-check whether `visualizer/` assets are included because the runtime currently imports `visualizer.app` directly from the repo.
+- The wheel package list only includes `src`; the runtime currently imports `visualizer.app` directly from the repo.

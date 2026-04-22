@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import sys
 import threading
 import time
@@ -23,7 +24,7 @@ from src.config import (
 from src.models import TracerouteResult
 from src.parser import parse_targets
 from src.prober import ProbeConfig, trace_single_target
-from src.resolver import clear_cache, resolve_result
+from src.resolver import clear_cache, resolve_hostname, resolve_result
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
         "-f",
         "--input-file",
         required=True,
-        help="Path to a .txt or .csv file containing target IP addresses.",
+        help="Path to a .txt or .csv file containing target IP addresses or domain names.",
     )
     p.add_argument(
         "-m",
@@ -155,10 +156,37 @@ def _launch_visualizer_background(results_dir: Path, targets: set[str]) -> None:
     webbrowser.open("http://localhost:8050")
 
 
+def _is_ip(addr: str) -> bool:
+    try:
+        ipaddress.ip_address(addr)
+        return True
+    except ValueError:
+        return False
+
+
 def run(args: argparse.Namespace) -> None:
     targets = parse_targets(args.input_file)
     if not targets:
-        print("No valid IP addresses found in input file.", file=sys.stderr)
+        print("No valid targets found in input file.", file=sys.stderr)
+        sys.exit(1)
+
+    resolved_ips: dict[str, str | None] = {}
+    skipped: list[str] = []
+    for t in targets:
+        if _is_ip(t):
+            resolved_ips[t] = None
+        else:
+            ip = resolve_hostname(t)
+            if ip is None:
+                print(f"Warning: could not resolve {t} — skipping.", file=sys.stderr)
+                skipped.append(t)
+            else:
+                resolved_ips[t] = ip
+
+    targets = [t for t in targets if t not in skipped]
+
+    if not targets:
+        print("No valid targets found in input file.", file=sys.stderr)
         sys.exit(1)
 
     protocols = _protocol_from_arg(args.protocol)
@@ -207,7 +235,8 @@ def run(args: argparse.Namespace) -> None:
                         result.cached = True
                         result.to_json(result_path)
                         cached_results.append(result)
-                        print(f"  {t} — cached ({len(result.hops)} hop(s))")
+                        ip_info = f" ({result.resolved_ip})" if result.resolved_ip else ""
+                        print(f"  {t}{ip_info} — cached ({len(result.hops)} hop(s))")
                         continue
                 except Exception:
                     pass
@@ -233,6 +262,11 @@ def run(args: argparse.Namespace) -> None:
         proto_list = ", ".join(p.value for p in protocols)
         print(f"Probing {len(targets_to_probe)} target(s) with protocol(s): {proto_list}")
 
+        for t in targets_to_probe:
+            ip = resolved_ips.get(t)
+            if ip:
+                print(f"  {t} -> {ip}")
+
         probe_configs = {
             t: ProbeConfig(
                 target=t,
@@ -245,6 +279,7 @@ def run(args: argparse.Namespace) -> None:
                 packet_size=args.size,
                 protocols=protocols,
                 output_path=output_dir / f"{t}.json",
+                resolved_ip=resolved_ips.get(t),
             )
             for t in targets_to_probe
         }

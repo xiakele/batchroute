@@ -51,15 +51,20 @@ class TracerouteResult:
     destination_reached: bool = False
     probing_complete: bool = False
     cached: bool = False
+    resolved_ip: str | None = None
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "target": self.target,
+            "resolved_ip": self.resolved_ip,
             "destination_reached": self.destination_reached,
             "probing_complete": self.probing_complete,
             "cached": self.cached,
             "hops": [h.to_dict() for h in self.hops],
         }
+        if self.resolved_ip is None:
+            del d["resolved_ip"]
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> TracerouteResult:
@@ -69,6 +74,7 @@ class TracerouteResult:
             probing_complete=d.get("probing_complete", False),
             cached=d.get("cached", False),
             hops=[Hop.from_dict(h) for h in d.get("hops", [])],
+            resolved_ip=d.get("resolved_ip"),
         )
 
     def to_json(self, path: Path) -> None:

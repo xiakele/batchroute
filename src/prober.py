@@ -70,16 +70,21 @@ class ProbeConfig:
     packet_size: int = DEFAULT_PACKET_SIZE
     protocols: list[Protocol] = field(default_factory=lambda: list(ALL_PROTOCOLS))
     output_path: Path | None = None
+    resolved_ip: str | None = None
 
 
 def _payload_size(total_size: int) -> int:
     return max(0, total_size - 28)
 
 
-def _build_probe(target: str, ttl: int, protocol: Protocol, port: int, size: int) -> IP:
+def _probe_dst(config: ProbeConfig) -> str:
+    return config.resolved_ip or config.target
+
+
+def _build_probe(dst: str, ttl: int, protocol: Protocol, port: int, size: int) -> IP:
     payload_bytes = b"\x00" * _payload_size(size)
 
-    ip_layer = IP(dst=target, ttl=ttl)
+    ip_layer = IP(dst=dst, ttl=ttl)
 
     if protocol == Protocol.UDP:
         return ip_layer / UDP(dport=port) / payload_bytes
@@ -89,7 +94,7 @@ def _build_probe(target: str, ttl: int, protocol: Protocol, port: int, size: int
         return ip_layer / ICMP(type=8) / payload_bytes
 
 
-def _is_destination_reached(response: Any, protocol: Protocol, target: str) -> bool:
+def _is_destination_reached(response: Any, protocol: Protocol, dst: str) -> bool:
     if response is None:
         return False
 
@@ -99,19 +104,19 @@ def _is_destination_reached(response: Any, protocol: Protocol, target: str) -> b
     resp_ip = response[IP]
 
     if protocol == Protocol.UDP:
-        if resp_ip.src == target and ICMP in response:
+        if resp_ip.src == dst and ICMP in response:
             return cast(int, response[ICMP].type) in (3, 11)
         return False
 
     elif protocol == Protocol.TCP:
-        if resp_ip.src == target and TCP in response:
+        if resp_ip.src == dst and TCP in response:
             return True
-        if resp_ip.src == target and ICMP in response:
+        if resp_ip.src == dst and ICMP in response:
             return cast(int, response[ICMP].type) == 3
         return False
 
     else:
-        if resp_ip.src == target and ICMP in response:
+        if resp_ip.src == dst and ICMP in response:
             return cast(int, response[ICMP].type) == 0
         return False
 
@@ -124,7 +129,8 @@ def _is_time_exceeded(response: Any) -> bool:
 
 def trace_single_target(config: ProbeConfig) -> TracerouteResult:
     _prime_arp_cache_from_os()
-    result = TracerouteResult(target=config.target)
+    result = TracerouteResult(target=config.target, resolved_ip=config.resolved_ip)
+    dst = _probe_dst(config)
     destination_reached = False
 
     for ttl in range(config.min_ttl, config.max_ttl + 1):
@@ -137,7 +143,7 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
 
             for _ in range(config.queries):
                 probe = _build_probe(
-                    target=config.target,
+                    dst=dst,
                     ttl=ttl,
                     protocol=protocol,
                     port=config.port,
@@ -153,7 +159,7 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
                     hop.ip = response[IP].src
                 rtts.append(rtt)
 
-                if _is_destination_reached(response, protocol, config.target):
+                if _is_destination_reached(response, protocol, dst):
                     destination_reached = True
 
                 if config.wait > 0:

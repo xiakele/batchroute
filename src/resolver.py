@@ -7,16 +7,17 @@ import dns.reversename
 
 from src.models import TracerouteResult
 
-_cache: dict[str, str | None] = {}
+_reverse_cache: dict[str, str | None] = {}
+_forward_cache: dict[str, str | None] = {}
 
 
 def resolve_single_ip(ip: str) -> str | None:
-    if ip in _cache:
-        return _cache[ip]
+    if ip in _reverse_cache:
+        return _reverse_cache[ip]
     try:
         rev = dns.reversename.from_address(ip)
         name = str(dns.resolver.resolve(rev, "PTR")[0]).rstrip(".")
-        _cache[ip] = name
+        _reverse_cache[ip] = name
         return name
     except (
         dns.resolver.NXDOMAIN,
@@ -25,8 +26,29 @@ def resolve_single_ip(ip: str) -> str | None:
         dns.exception.DNSException,
         socket.gaierror,
     ):
-        _cache[ip] = None
+        _reverse_cache[ip] = None
         return None
+
+
+def resolve_hostname(name: str) -> str | None:
+    if name in _forward_cache:
+        return _forward_cache[name]
+    for rdtype in ("A", "AAAA"):
+        try:
+            answers = dns.resolver.resolve(name, rdtype)
+            ip = str(answers[0])
+            _forward_cache[name] = ip
+            return ip
+        except (
+            dns.resolver.NXDOMAIN,
+            dns.resolver.Timeout,
+            dns.resolver.NoAnswer,
+            dns.exception.DNSException,
+            socket.gaierror,
+        ):
+            continue
+    _forward_cache[name] = None
+    return None
 
 
 def resolve_result(result: TracerouteResult) -> None:
@@ -41,4 +63,5 @@ def resolve_result(result: TracerouteResult) -> None:
 
 
 def clear_cache() -> None:
-    _cache.clear()
+    _reverse_cache.clear()
+    _forward_cache.clear()

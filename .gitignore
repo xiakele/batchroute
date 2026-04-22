@@ -209,4 +209,5 @@ __marimo__/
 /*.txt
 /*.csv
 results/
+mock_results/
 .claude/

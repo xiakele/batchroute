@@ -22,6 +22,7 @@ from src.config import (
     Protocol,
 )
 from src.models import TracerouteResult
+from src.output import bold, cyan, dim, error, green, heading, red, warning
 from src.parser import parse_targets
 from src.prober import ProbeConfig, trace_single_target
 from src.resolver import clear_cache, resolve_hostname, resolve_result
@@ -152,7 +153,8 @@ def _launch_visualizer_background(results_dir: Path, targets: set[str]) -> None:
     )
     thread.start()
     time.sleep(1.5)
-    print("Visualizer running at http://localhost:8050 — press Ctrl+C to exit.")
+    viz_url = bold("http://localhost:8050")
+    print(f"\n{cyan(bold('Visualizer'))} running at {viz_url} — press Ctrl+C to exit.")
     webbrowser.open("http://localhost:8050")
 
 
@@ -167,45 +169,50 @@ def _is_ip(addr: str) -> bool:
 def run(args: argparse.Namespace) -> None:
     targets = parse_targets(args.input_file)
     if not targets:
-        print("No valid targets found in input file.", file=sys.stderr)
+        print(error("No valid targets found in input file."), file=sys.stderr)
         sys.exit(1)
 
+    # --- DNS resolution phase ---
+    print(heading("Resolving targets"))
     resolved_ips: dict[str, str | None] = {}
     skipped: list[str] = []
     for t in targets:
         if _is_ip(t):
             resolved_ips[t] = None
+            print(f"  {t}  {dim('(IP)')}")
         else:
             ip = resolve_hostname(t)
             if ip is None:
-                print(f"Warning: could not resolve {t} — skipping.", file=sys.stderr)
+                print(f"  {warning('!')} could not resolve {t} {dim('(skipping)')}")
                 skipped.append(t)
             else:
                 resolved_ips[t] = ip
+                print(f"  {t} -> {ip}")
 
     targets = [t for t in targets if t not in skipped]
 
     if not targets:
-        print("No valid targets found in input file.", file=sys.stderr)
+        print(error("No valid targets found in input file."), file=sys.stderr)
         sys.exit(1)
 
+    # --- Output dir / cache setup ---
     protocols = _protocol_from_arg(args.protocol)
     output_dir = Path(args.output_dir).resolve()
 
     if args.force:
         existing = list(output_dir.glob("*.json")) if output_dir.exists() else []
-        print(f"Results directory: {output_dir}")
+        print(f"\n{heading('Results directory')}  {dim(str(output_dir))}")
         if existing:
             target_stems = {f"{t}.json" for t in targets}
             to_overwrite = [f for f in existing if f.name in target_stems]
             print(f"  {len(to_overwrite)} result file(s) will be overwritten.")
             if not args.yes and sys.stdin.isatty():
                 try:
-                    answer = input("Continue? [y/N] ").strip().lower()
+                    answer = input("  Continue? [y/N] ").strip().lower()
                 except EOFError:
                     answer = "y"
                 if answer != "y":
-                    print("Aborted.")
+                    print("  Aborted.")
                     sys.exit(0)
         output_dir.mkdir(parents=True, exist_ok=True)
         for t in targets:
@@ -215,13 +222,14 @@ def run(args: argparse.Namespace) -> None:
         (output_dir / ".targets").unlink(missing_ok=True)
     else:
         existing = list(output_dir.glob("*.json")) if output_dir.exists() else []
-        print(f"Results directory: {output_dir}")
+        print(f"\n{heading('Results directory')}  {dim(str(output_dir))}")
         if existing:
             print(f"  {len(existing)} existing result file(s) found.")
         output_dir.mkdir(parents=True, exist_ok=True)
 
     (output_dir / ".targets").write_text("\n".join(targets) + "\n")
 
+    # --- Cache loading phase ---
     cached_results: list[TracerouteResult] = []
     targets_to_probe: list[str] = []
 
@@ -235,9 +243,6 @@ def run(args: argparse.Namespace) -> None:
                         result.cached = True
                         result.to_json(result_path)
                         cached_results.append(result)
-                        ip_info = f" ({result.resolved_ip})" if result.resolved_ip else ""
-                        unique_hops = len({h.ttl for h in result.hops})
-                        print(f"  {t}{ip_info} — cached ({unique_hops} hop(s))")
                         continue
                 except Exception:
                     pass
@@ -245,28 +250,42 @@ def run(args: argparse.Namespace) -> None:
     else:
         targets_to_probe = list(targets)
 
+    if cached_results:
+        print(f"\n{heading('Cached')}")
+        for r in cached_results:
+            ip_info = f" ({r.resolved_ip})" if r.resolved_ip else ""
+            unique_hops = len({h.ttl for h in r.hops})
+            dest_label = green("reached") if r.destination_reached else red("not reached")
+            print(f"  {r.target}{ip_info} — {unique_hops} hop(s), {dest_label} {dim('[cached]')}")
+
     needs_probing = len(targets_to_probe) > 0
 
     if not needs_probing and not cached_results:
-        print("Nothing to do — no targets found.", file=sys.stderr)
+        print(error("Nothing to do — no targets found."), file=sys.stderr)
         sys.exit(1)
 
     if not needs_probing:
-        print(f"All {len(cached_results)} target(s) cached — no probing needed.")
+        print(f"\nAll {len(cached_results)} target(s) cached — no probing needed.")
 
     if not args.no_viz:
         _launch_visualizer_background(output_dir, set(targets))
 
     results: list[TracerouteResult] = list(cached_results)
 
+    # --- Probing phase ---
     if needs_probing:
         proto_list = ", ".join(p.value for p in protocols)
-        print(f"Probing {len(targets_to_probe)} target(s) with protocol(s): {proto_list}")
+        print(f"\n{heading('Probing')}  {len(targets_to_probe)} target(s)")
+        print(f"  {dim(f'protocols: {proto_list}')}")
 
         for t in targets_to_probe:
             ip = resolved_ips.get(t)
             if ip:
                 print(f"  {t} -> {ip}")
+            else:
+                print(f"  {t}  {dim('(IP)')}")
+
+        print()
 
         probe_configs = {
             t: ProbeConfig(
@@ -295,7 +314,7 @@ def run(args: argparse.Namespace) -> None:
                 try:
                     result = future.result()
                 except Exception as exc:
-                    print(f"Error probing {target}: {exc}", file=sys.stderr)
+                    print(f"  {error('!')} {target}: {exc}", file=sys.stderr)
                     continue
 
                 if not args.no_dns:
@@ -303,18 +322,28 @@ def run(args: argparse.Namespace) -> None:
                     result.to_json(output_dir / f"{target}.json")
 
                 results.append(result)
-                dest = "reached" if result.destination_reached else "not reached"
+                dest_label = green("reached") if result.destination_reached else red("not reached")
                 unique_hops = len({h.ttl for h in result.hops})
-                print(f"  {target} — {unique_hops} hop(s), destination {dest}")
+                print(f"  {target} — {unique_hops} hop(s), destination {dest_label}")
 
+    # --- Summary ---
     clear_cache()
-    print(f"Done. {len(results)} result(s) in {output_dir}/ ({len(cached_results)} cached)")
+    reached = sum(1 for r in results if r.destination_reached)
+    not_reached = len(results) - reached
+    parts = [f"{len(results)} result(s)"]
+    if cached_results:
+        parts.append(f"{len(cached_results)} cached")
+    if reached:
+        parts.append(f"{green(str(reached))} reached")
+    if not_reached:
+        parts.append(f"{red(str(not_reached))} not reached")
+    print(f"\n{bold('Done.')} {' | '.join(parts)}  {dim(str(output_dir) + '/')}")
 
     if not args.no_viz:
         try:
             threading.Event().wait()
         except KeyboardInterrupt:
-            print("\nShutting down.")
+            print(f"\n{bold('Shutting down.')}")
 
 
 def main() -> None:

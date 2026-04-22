@@ -61,10 +61,11 @@ def _build_graph_elements(
 
     for result in results:
         target_id = result.target
+        resolved_ip = getattr(result, "resolved_ip", None) or None
         if target_id not in nodes:
             max_ttl = max((h.ttl for h in result.hops), default=0)
             current_hops = len(set(h.ttl for h in result.hops))
-            label = _node_label(result.target, None)
+            label = _node_label(result.target, resolved_ip)
             if not result.probing_complete and max_ttl > 0:
                 label += f"\n({current_hops} hops)"
 
@@ -94,6 +95,10 @@ def _build_graph_elements(
         for hop in result.hops:
             by_protocol.setdefault(hop.protocol.value, []).append(hop)
 
+        target_ips: set[str] = set()
+        if resolved_ip:
+            target_ips.add(resolved_ip)
+
         for proto_name, hops in by_protocol.items():
             if proto_name not in protocols:
                 continue
@@ -112,6 +117,8 @@ def _build_graph_elements(
                                 "ttl": hop.ttl,
                             },
                         }
+                elif hop.ip in target_ips:
+                    node_id = target_id
                 else:
                     node_id = hop.ip
                     if node_id not in nodes:

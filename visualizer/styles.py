@@ -198,6 +198,12 @@ def cytoscape_stylesheet() -> list[dict]:
                 "opacity": 1,
             },
         },
+        {
+            "selector": ".dimmed",
+            "style": {
+                "opacity": 0.12,
+            },
+        },
     ]
 
 

@@ -9,7 +9,7 @@ import dash_cytoscape as cyto
 import flask.cli
 import plotly.graph_objects as go
 from dash import Dash, dcc, html
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 
 from src.models import TracerouteResult
 from visualizer.styles import (
@@ -47,16 +47,26 @@ def _load_results(results_dir: str, targets: set[str] | None = None) -> list[Tra
 
 
 def _build_graph_elements(
-    results: list[TracerouteResult], protocols: set[str] | None = None
+    results: list[TracerouteResult],
+    protocols: set[str] | None = None,
+    focused_target: str | None = None,
 ) -> list[dict]:
     nodes: dict[str, dict] = {}
     edges: dict[str, dict] = {}
+    node_targets: dict[str, set[str]] = {SOURCE_NODE_ID: set()}
+    edge_targets: dict[str, set[str]] = {}
 
     if protocols is None:
         protocols = set(PROTOCOL_COLORS.keys())
 
+    all_targets: set[str] = set()
+    for result in results:
+        all_targets.add(result.target)
+    node_targets[SOURCE_NODE_ID] = set(all_targets)
+
     nodes[SOURCE_NODE_ID] = {
         "data": {"id": SOURCE_NODE_ID, "label": "Source"},
+        "classes": "",
     }
 
     for result in results:
@@ -90,6 +100,7 @@ def _build_graph_elements(
                 },
                 "classes": classes,
             }
+            node_targets.setdefault(target_id, set()).add(target_id)
 
         by_protocol: dict[str, list] = {}
         for hop in result.hops:
@@ -116,7 +127,9 @@ def _build_graph_elements(
                                 "missing": True,
                                 "ttl": hop.ttl,
                             },
+                            "classes": "",
                         }
+                    node_targets.setdefault(node_id, set()).add(target_id)
                 elif hop.ip in target_ips:
                     node_id = target_id
                 else:
@@ -131,7 +144,9 @@ def _build_graph_elements(
                                 "loss_rate": hop.loss_rate,
                                 "ttl": hop.ttl,
                             },
+                            "classes": "",
                         }
+                    node_targets.setdefault(node_id, set()).add(target_id)
 
                 edge_id = f"{prev_id}_{node_id}_{proto_name}"
                 if edge_id not in edges:
@@ -147,7 +162,9 @@ def _build_graph_elements(
                             "loss_rate": loss,
                             "weight": max(1, int(avg_rtt or 1)),
                         },
+                        "classes": "",
                     }
+                edge_targets.setdefault(edge_id, set()).add(target_id)
 
                 prev_id = node_id
 
@@ -164,7 +181,21 @@ def _build_graph_elements(
                             "loss_rate": 0.0,
                             "weight": 1,
                         },
+                        "classes": "",
                     }
+                edge_targets.setdefault(edge_id, set()).add(target_id)
+
+    if focused_target:
+        for node_id, elem in nodes.items():
+            targets = node_targets.get(node_id, set())
+            if focused_target not in targets:
+                existing = elem.get("classes", "")
+                elem["classes"] = f"{existing} dimmed".strip()
+        for edge_id, elem in edges.items():
+            targets = edge_targets.get(edge_id, set())
+            if focused_target not in targets:
+                existing = elem.get("classes", "")
+                elem["classes"] = f"{existing} dimmed".strip()
 
     return list(nodes.values()) + list(edges.values())
 
@@ -645,6 +676,7 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
                 interval=POLL_INTERVAL_MS,
                 n_intervals=0,
             ),
+            dcc.Store(id="focused-target", data=None),
         ],
     )
 
@@ -660,14 +692,20 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
             Input("poll-interval", "n_intervals"),
             Input("per-target-toggle", "value"),
             Input("protocol-filter", "value"),
+            Input("focused-target", "data"),
         ],
     )
-    def update_graph(_n: int, per_target_value: list[str], proto_value: list[str]) -> tuple:
+    def update_graph(
+        _n: int,
+        per_target_value: list[str],
+        proto_value: list[str],
+        focused_target: str | None,
+    ) -> tuple:
         results = _load_results(results_dir, targets)
         per_target = bool(per_target_value)
         protocols = set(proto_value) if proto_value else set()
         return (
-            _build_graph_elements(results, protocols),
+            _build_graph_elements(results, protocols, focused_target),
             _build_stats_bar(results),
             _build_progress_table(results),
             _build_rtt_chart(results, per_target, protocols),
@@ -703,6 +741,23 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
         if set(protocols) == set(all_protos):
             return ["all"], protocols
         return [], protocols
+
+    @app.callback(
+        Output("focused-target", "data"),
+        Input("topo-graph", "tapNodeData"),
+        State("focused-target", "data"),
+    )
+    def set_focused_target(node_data: dict | None, current: str | None) -> str | None:
+        if node_data is None:
+            return current
+        if node_data.get("id") == SOURCE_NODE_ID:
+            return None
+        if node_data.get("is_target"):
+            target_id = str(node_data["id"])
+            if current == target_id:
+                return None
+            return target_id
+        return current
 
     @app.callback(
         Output("element-details", "children"),

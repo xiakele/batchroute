@@ -569,6 +569,35 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
                     html.Div(
                         className="graph-card",
                         children=[
+                            html.Div(
+                                className="graph-controls",
+                                children=[
+                                    html.Button(
+                                        "−",
+                                        id="btn-zoom-out",
+                                        className="graph-btn",
+                                        title="Zoom out",
+                                    ),
+                                    html.Button(
+                                        "⟲",
+                                        id="btn-center",
+                                        className="graph-btn",
+                                        title="Center",
+                                    ),
+                                    html.Button(
+                                        "+",
+                                        id="btn-zoom-in",
+                                        className="graph-btn",
+                                        title="Zoom in",
+                                    ),
+                                    html.Button(
+                                        "⛶",
+                                        id="btn-fullscreen",
+                                        className="graph-btn",
+                                        title="Toggle fullscreen",
+                                    ),
+                                ],
+                            ),
                             cyto.Cytoscape(
                                 id="topo-graph",
                                 elements=[],

@@ -236,7 +236,8 @@ def run(args: argparse.Namespace) -> None:
                         result.to_json(result_path)
                         cached_results.append(result)
                         ip_info = f" ({result.resolved_ip})" if result.resolved_ip else ""
-                        print(f"  {t}{ip_info} — cached ({len(result.hops)} hop(s))")
+                        unique_hops = len({h.ttl for h in result.hops})
+                        print(f"  {t}{ip_info} — cached ({unique_hops} hop(s))")
                         continue
                 except Exception:
                     pass
@@ -303,7 +304,8 @@ def run(args: argparse.Namespace) -> None:
 
                 results.append(result)
                 dest = "reached" if result.destination_reached else "not reached"
-                print(f"  {target} — {len(result.hops)} hop(s), destination {dest}")
+                unique_hops = len({h.ttl for h in result.hops})
+                print(f"  {target} — {unique_hops} hop(s), destination {dest}")
 
     clear_cache()
     print(f"Done. {len(results)} result(s) in {output_dir}/ ({len(cached_results)} cached)")

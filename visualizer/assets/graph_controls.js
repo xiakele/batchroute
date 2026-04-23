@@ -22,6 +22,7 @@
 
   let cy = null;
   let checkInterval = null;
+  let resizeTimeout = null;
 
   function setup() {
     if (cy) return true;
@@ -57,6 +58,23 @@
           if (document.exitFullscreen) document.exitFullscreen();
         }
       });
+    }
+
+    const graphCard = document.querySelector(".graph-card");
+    if (graphCard && typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(function () {
+        var container = document.getElementById("topo-graph");
+        if (!container) return;
+        var w = graphCard.clientWidth;
+        var h = graphCard.clientHeight;
+        if (w <= 0 || h <= 0) return;
+        if (resizeTimeout) clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(function () {
+          if (cy.elements().length === 0) return;
+          cy.fit();
+        }, 150);
+      });
+      ro.observe(graphCard);
     }
 
     if (checkInterval) {

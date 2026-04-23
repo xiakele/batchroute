@@ -605,7 +605,7 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
                                     "name": "breadthfirst",
                                     "roots": f"#{SOURCE_NODE_ID}",
                                     "directed": True,
-                                    "spacingFactor": 1.2,
+                                    "spacingFactor": 1.5,
                                 },
                                 style={
                                     "width": "100%",

@@ -688,15 +688,25 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
             html.Div(
                 className="charts-grid",
                 children=[
-                    dcc.Graph(
-                        id="rtt-chart",
-                        style={"height": "var(--chart-h)"},
-                        config={"displayModeBar": False},
+                    html.Div(
+                        className="card chart-card",
+                        children=[
+                            dcc.Graph(
+                                id="rtt-chart",
+                                style={"height": "var(--chart-h)"},
+                                config={"displayModeBar": False},
+                            ),
+                        ],
                     ),
-                    dcc.Graph(
-                        id="loss-chart",
-                        style={"height": "var(--chart-h)"},
-                        config={"displayModeBar": False},
+                    html.Div(
+                        className="card chart-card",
+                        children=[
+                            dcc.Graph(
+                                id="loss-chart",
+                                style={"height": "var(--chart-h)"},
+                                config={"displayModeBar": False},
+                            ),
+                        ],
                     ),
                 ],
             ),

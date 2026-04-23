@@ -147,6 +147,7 @@ def cytoscape_stylesheet() -> list[dict]:
         {
             "selector": "node.target.unreachable",
             "style": {
+                "background-color": LOSS_HIGH_COLOR,
                 "border-color": LOSS_HIGH_COLOR,
                 "border-width": 3,
             },

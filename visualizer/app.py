@@ -49,20 +49,22 @@ def _load_results(results_dir: str, targets: set[str] | None = None) -> list[Tra
 def _build_graph_elements(
     results: list[TracerouteResult],
     protocols: set[str] | None = None,
-    focused_target: str | None = None,
+    focused_node: str | None = None,
 ) -> list[dict]:
     nodes: dict[str, dict] = {}
     edges: dict[str, dict] = {}
-    node_targets: dict[str, set[str]] = {SOURCE_NODE_ID: set()}
-    edge_targets: dict[str, set[str]] = {}
+    node_paths: dict[str, set[str]] = {SOURCE_NODE_ID: set()}
+    edge_paths: dict[str, set[str]] = {}
 
     if protocols is None:
         protocols = set(PROTOCOL_COLORS.keys())
 
-    all_targets: set[str] = set()
+    all_path_ids: set[str] = set()
     for result in results:
-        all_targets.add(result.target)
-    node_targets[SOURCE_NODE_ID] = set(all_targets)
+        for hop in result.hops:
+            if hop.protocol.value in protocols:
+                all_path_ids.add(f"{result.target}#{hop.protocol.value}")
+    node_paths[SOURCE_NODE_ID] = set(all_path_ids)
 
     nodes[SOURCE_NODE_ID] = {
         "data": {"id": SOURCE_NODE_ID, "label": "Source"},
@@ -100,7 +102,6 @@ def _build_graph_elements(
                 },
                 "classes": classes,
             }
-            node_targets.setdefault(target_id, set()).add(target_id)
 
         by_protocol: dict[str, list] = {}
         for hop in result.hops:
@@ -113,6 +114,8 @@ def _build_graph_elements(
         for proto_name, hops in by_protocol.items():
             if proto_name not in protocols:
                 continue
+            path_id = f"{target_id}#{proto_name}"
+            node_paths.setdefault(target_id, set()).add(path_id)
             prev_id = SOURCE_NODE_ID
             for hop in hops:
                 if hop.ip is None:
@@ -129,7 +132,7 @@ def _build_graph_elements(
                             },
                             "classes": "",
                         }
-                    node_targets.setdefault(node_id, set()).add(target_id)
+                    node_paths.setdefault(node_id, set()).add(path_id)
                 elif hop.ip in target_ips:
                     node_id = target_id
                 else:
@@ -146,7 +149,7 @@ def _build_graph_elements(
                             },
                             "classes": "",
                         }
-                    node_targets.setdefault(node_id, set()).add(target_id)
+                    node_paths.setdefault(node_id, set()).add(path_id)
 
                 edge_id = f"{prev_id}_{node_id}_{proto_name}"
                 if edge_id not in edges:
@@ -164,7 +167,7 @@ def _build_graph_elements(
                         },
                         "classes": "",
                     }
-                edge_targets.setdefault(edge_id, set()).add(target_id)
+                edge_paths.setdefault(edge_id, set()).add(path_id)
 
                 prev_id = node_id
 
@@ -183,19 +186,21 @@ def _build_graph_elements(
                         },
                         "classes": "",
                     }
-                edge_targets.setdefault(edge_id, set()).add(target_id)
+                edge_paths.setdefault(edge_id, set()).add(path_id)
 
-    if focused_target:
-        for node_id, elem in nodes.items():
-            targets = node_targets.get(node_id, set())
-            if focused_target not in targets:
-                existing = elem.get("classes", "")
-                elem["classes"] = f"{existing} dimmed".strip()
-        for edge_id, elem in edges.items():
-            targets = edge_targets.get(edge_id, set())
-            if focused_target not in targets:
-                existing = elem.get("classes", "")
-                elem["classes"] = f"{existing} dimmed".strip()
+    if focused_node:
+        focused_paths = node_paths.get(focused_node, set())
+        if focused_paths:
+            for node_id, elem in nodes.items():
+                paths = node_paths.get(node_id, set())
+                if not paths.intersection(focused_paths):
+                    existing = elem.get("classes", "")
+                    elem["classes"] = f"{existing} dimmed".strip()
+            for edge_id, elem in edges.items():
+                paths = edge_paths.get(edge_id, set())
+                if not paths.intersection(focused_paths):
+                    existing = elem.get("classes", "")
+                    elem["classes"] = f"{existing} dimmed".strip()
 
     return list(nodes.values()) + list(edges.values())
 
@@ -715,7 +720,7 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
                 interval=POLL_INTERVAL_MS,
                 n_intervals=0,
             ),
-            dcc.Store(id="focused-target", data=None),
+            dcc.Store(id="focused-node", data=None),
         ],
     )
 
@@ -731,20 +736,20 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
             Input("poll-interval", "n_intervals"),
             Input("per-target-toggle", "value"),
             Input("protocol-filter", "value"),
-            Input("focused-target", "data"),
+            Input("focused-node", "data"),
         ],
     )
     def update_graph(
         _n: int,
         per_target_value: list[str],
         proto_value: list[str],
-        focused_target: str | None,
+        focused_node: str | None,
     ) -> tuple:
         results = _load_results(results_dir, targets)
         per_target = bool(per_target_value)
         protocols = set(proto_value) if proto_value else set()
         return (
-            _build_graph_elements(results, protocols, focused_target),
+            _build_graph_elements(results, protocols, focused_node),
             _build_stats_bar(results),
             _build_progress_table(results),
             _build_rtt_chart(results, per_target, protocols),
@@ -782,21 +787,19 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
         return [], protocols
 
     @app.callback(
-        Output("focused-target", "data"),
+        Output("focused-node", "data"),
         Input("topo-graph", "tapNodeData"),
-        State("focused-target", "data"),
+        State("focused-node", "data"),
     )
-    def set_focused_target(node_data: dict | None, current: str | None) -> str | None:
+    def set_focused_node(node_data: dict | None, current: str | None) -> str | None:
         if node_data is None:
             return current
-        if node_data.get("id") == SOURCE_NODE_ID:
+        node_id = str(node_data["id"])
+        if node_id == SOURCE_NODE_ID:
             return None
-        if node_data.get("is_target"):
-            target_id = str(node_data["id"])
-            if current == target_id:
-                return None
-            return target_id
-        return current
+        if current == node_id:
+            return None
+        return node_id
 
     @app.callback(
         Output("element-details", "children"),

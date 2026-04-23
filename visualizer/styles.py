@@ -78,8 +78,8 @@ def cytoscape_stylesheet() -> list[dict]:
         {
             "selector": "node[rtt]",
             "style": {
-                "width": "mapData(rtt, 0, 200, 30, 54)",
-                "height": "mapData(rtt, 0, 200, 30, 54)",
+                "width": "mapData(rtt, 0, 200, 30, 75)",
+                "height": "mapData(rtt, 0, 200, 30, 75)",
             },
         },
         {
@@ -156,7 +156,7 @@ def cytoscape_stylesheet() -> list[dict]:
             "selector": "edge",
             "style": {
                 "curve-style": "bezier",
-                "width": "mapData(weight, 1, 40, 1.2, 4.5)",
+                "width": "mapData(weight, 1, 120, 1.2, 6)",
                 "line-color": "#ccc",
                 "target-arrow-shape": "triangle",
                 "target-arrow-color": "#ccc",

@@ -246,8 +246,7 @@ body {
 .progress-table-wrap {
   max-height: 320px;
   overflow-y: auto;
-  margin: -4px;
-  padding: 4px;
+  background: var(--bg-card);
 }
 
 .progress-table {

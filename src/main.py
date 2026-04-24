@@ -204,6 +204,8 @@ def _validate_iface(iface_name: str) -> str:
     if iface_name in scapy_conf.ifaces:
         return iface_name
     for iface in scapy_conf.ifaces.values():
+        if getattr(iface, "name", None) == iface_name:
+            return str(iface)
         if getattr(iface, "network_name", None) == iface_name:
             return str(iface)
         if str(iface) == iface_name:
@@ -230,6 +232,9 @@ def run(args: argparse.Namespace) -> None:
     if args.input_file is None:
         print(error("-f/--input-file is required."), file=sys.stderr)
         sys.exit(1)
+
+    if args.iface:
+        _validate_iface(args.iface)
 
     targets = parse_targets(args.input_file)
     if not targets:
@@ -331,6 +336,13 @@ def run(args: argparse.Namespace) -> None:
     if not needs_probing:
         print(f"\nAll {len(cached_results)} target(s) cached — no probing needed.")
 
+    # --- Interface selection ---
+    chosen_iface = args.iface or _get_default_iface()
+    if chosen_iface:
+        chosen_iface = _validate_iface(chosen_iface)
+        scapy_conf.iface = chosen_iface  # type: ignore[assignment]
+        _ensure_routes_use_iface(chosen_iface)
+
     if not args.no_viz:
         _launch_visualizer_background(output_dir, set(targets))
 
@@ -338,11 +350,6 @@ def run(args: argparse.Namespace) -> None:
 
     # --- Probing phase ---
     if needs_probing:
-        chosen_iface = args.iface or _get_default_iface()
-        if chosen_iface:
-            chosen_iface = _validate_iface(chosen_iface)
-            scapy_conf.iface = chosen_iface  # type: ignore[assignment]
-            _ensure_routes_use_iface(chosen_iface)
         print(f"\n{heading('Interface')}  {dim(str(scapy_conf.iface))}")
         proto_list = ", ".join(p.value for p in protocols)
         print(f"\n{heading('Probing')}  {len(targets_to_probe)} target(s)")

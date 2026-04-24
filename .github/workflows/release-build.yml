@@ -30,7 +30,14 @@ jobs:
       - name: Build with PyInstaller
         run: uv run pyinstaller batchroute.spec
 
-      - name: Package release archive
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: batchroute-${{ matrix.os }}
+          path: dist/batchroute/**
+
+      - name: Create release archive
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           python -c "
           import shutil, sys
@@ -42,12 +49,6 @@ jobs:
               base_dir='batchroute',
           )
           "
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: batchroute-${{ matrix.os }}
-          path: batchroute-${{ matrix.os }}.*
 
       - name: Upload Release Asset
         if: startsWith(github.ref, 'refs/tags/v')

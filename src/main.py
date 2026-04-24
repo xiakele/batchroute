@@ -9,6 +9,8 @@ import webbrowser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from scapy.config import conf as scapy_conf
+
 from src.config import (
     ALL_PROTOCOLS,
     DEFAULT_MAX_TTL,
@@ -37,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "-f",
         "--input-file",
-        required=True,
+        default=None,
         help="Path to a .txt or .csv file containing target IP addresses or domain names.",
     )
     p.add_argument(
@@ -130,6 +132,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=4,
         help="Number of parallel workers for probing (default: 4).",
     )
+    p.add_argument(
+        "-i",
+        "--iface",
+        default=None,
+        help="Network interface to use for probing (default: interface for the default route).",
+    )
+    p.add_argument(
+        "--list-interfaces",
+        action="store_true",
+        help="List available network interfaces and exit.",
+    )
 
     return p
 
@@ -166,7 +179,58 @@ def _is_ip(addr: str) -> bool:
         return False
 
 
+def _list_interfaces() -> None:
+    print(heading("Available interfaces"))
+    try:
+        for iface in scapy_conf.ifaces.values():
+            name = getattr(iface, "name", str(iface))
+            ip = getattr(iface, "ip", "N/A")
+            mac = getattr(iface, "mac", "N/A")
+            print(f"  {name:<30} {ip:<15} {mac}")
+    except Exception as exc:
+        print(error(f"Could not list interfaces: {exc}"), file=sys.stderr)
+        sys.exit(1)
+
+
+def _get_default_iface() -> str | None:
+    try:
+        iface, _, _ = scapy_conf.route.route("0.0.0.0")
+        return str(iface)
+    except Exception:
+        return None
+
+
+def _validate_iface(iface_name: str) -> str:
+    if iface_name in scapy_conf.ifaces:
+        return iface_name
+    for iface in scapy_conf.ifaces.values():
+        if getattr(iface, "network_name", None) == iface_name:
+            return str(iface)
+        if str(iface) == iface_name:
+            return str(iface)
+    print(
+        error(f"Interface '{iface_name}' not found. Use --list-interfaces to see available names."),
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+def _ensure_routes_use_iface(iface_name: str) -> None:
+    route = scapy_conf.route
+    route.routes = [
+        r for r in route.routes if str(r[3]) == iface_name or str(r[3]).startswith("lo")
+    ]
+
+
 def run(args: argparse.Namespace) -> None:
+    if args.list_interfaces:
+        _list_interfaces()
+        sys.exit(0)
+
+    if args.input_file is None:
+        print(error("-f/--input-file is required."), file=sys.stderr)
+        sys.exit(1)
+
     targets = parse_targets(args.input_file)
     if not targets:
         print(error("No valid targets found in input file."), file=sys.stderr)
@@ -274,6 +338,12 @@ def run(args: argparse.Namespace) -> None:
 
     # --- Probing phase ---
     if needs_probing:
+        chosen_iface = args.iface or _get_default_iface()
+        if chosen_iface:
+            chosen_iface = _validate_iface(chosen_iface)
+            scapy_conf.iface = chosen_iface  # type: ignore[assignment]
+            _ensure_routes_use_iface(chosen_iface)
+        print(f"\n{heading('Interface')}  {dim(str(scapy_conf.iface))}")
         proto_list = ", ".join(p.value for p in protocols)
         print(f"\n{heading('Probing')}  {len(targets_to_probe)} target(s)")
         print(f"  {dim(f'protocols: {proto_list}')}")

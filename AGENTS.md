@@ -39,6 +39,7 @@
 - Forward DNS resolution for target domains happens **before** probing starts; unresolvable domains are warned and skipped.
 - Reverse DNS resolution (hop hostnames) happens **after** probing finishes for each target; partial JSON written during probing will not yet contain hostnames.
 - Default probing sends UDP, TCP SYN, and ICMP for each TTL step unless `-P` restricts the protocol.
+- Scapy sends packets via the interface associated with the default route (`0.0.0.0`). Use `--iface <name>` to override, or `--list-interfaces` to see available adapters.
 
 ## Visualizer Interactivity
 - Protocol checkboxes in the legend filter which protocol paths appear in the graph and charts.

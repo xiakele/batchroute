@@ -193,14 +193,37 @@ def _list_interfaces() -> None:
         sys.exit(1)
 
 
+def _iface_is_connected(iface: Any) -> bool:
+    name = getattr(iface, "name", "")
+    if name in ("lo", "Loopback Pseudo-Interface 1"):
+        return False
+    ip = getattr(iface, "ip", None)
+    if not ip:
+        return False
+    ip_str = str(ip).strip()
+    if not ip_str or ip_str.startswith("127.") or ip_str.startswith("169.254."):
+        return False
+    return True
+
+
 def _get_default_iface() -> Any | None:
     try:
         iface_name, _, _ = scapy_conf.route.route("0.0.0.0")
         for iface in scapy_conf.ifaces.values():
             if str(iface) == str(iface_name):
-                return iface
+                if _iface_is_connected(iface):
+                    return iface
     except Exception:
         pass
+
+    default_routes = [r for r in scapy_conf.route.routes if r[0] == "0.0.0.0" and r[1] == "0.0.0.0"]
+    default_routes.sort(key=lambda r: r[4])
+
+    for route in default_routes:
+        for iface in scapy_conf.ifaces.values():
+            if str(iface) == str(route[3]) and _iface_is_connected(iface):
+                return iface
+
     return None
 
 
@@ -343,6 +366,13 @@ def run(args: argparse.Namespace) -> None:
     if chosen_iface is not None:
         scapy_conf.iface = chosen_iface  # type: ignore[assignment]
         _ensure_routes_use_iface(str(chosen_iface))
+    else:
+        print(
+            warning(
+                "No connected interface with a default route found. "
+                "Use --list-interfaces and --iface to specify one."
+            )
+        )
 
     if not args.no_viz:
         _launch_visualizer_background(output_dir, set(targets))

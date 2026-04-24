@@ -151,6 +151,9 @@ body {
   .main-grid {
     flex-direction: column;
   }
+  .graph-card {
+    max-height: none;
+  }
   .main-grid > .sidebar {
     flex-basis: auto;
     overflow-y: visible;
@@ -171,7 +174,8 @@ body {
   overflow: hidden;
   box-shadow: var(--shadow-card);
   background: var(--bg-card);
-  min-height: 320px;
+  min-height: var(--graph-h);
+  max-height: 750px;
 }
 
 .sidebar {
@@ -481,7 +485,7 @@ body {
 
 .graph-card .cytoscape-container {
   width: 100% !important;
-  height: var(--graph-h) !important;
+  height: 100% !important;
 }
 
 /* ── Graph controls ── */
@@ -524,7 +528,6 @@ body {
 
 @media (max-height: 700px) {
   :root {
-    --graph-h: clamp(320px, 55vh, 480px);
     --chart-h: clamp(180px, 28vh, 260px);
   }
 

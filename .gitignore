@@ -208,6 +208,7 @@ __marimo__/
 
 /*.txt
 /*.csv
+.claude/
 results/
 mock_results/
-.claude/
+!/batchroute.spec

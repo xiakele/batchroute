@@ -54,3 +54,14 @@
 - `mypy` uses `disallow_untyped_defs = true` — all function signatures need type annotations.
 - Dash callback data (e.g. `tapNodeData`) returns `Any`; cast or validate before use to satisfy mypy.
 - The wheel package list only includes `src`; the runtime currently imports `visualizer.app` directly from the repo.
+
+## Release Binary Builds
+- PyInstaller is used to produce directory-based bundles for Linux, macOS, and Windows.
+- Spec file: `batchroute.spec` at the repo root. It forces inclusion of `scapy.layers.all`, platform-specific `scapy.arch.*` modules, and collects data files for `dash`, `dash_cytoscape`, `plotly`, `pandas`, and `dns`. Custom `visualizer/assets/` files are also explicitly bundled.
+- Local build: `uv run python scripts/build_release.py` (or `uv run pyinstaller batchroute.spec` directly). Output lands in `dist/batchroute/`; the helper script also creates `dist/batchroute-release.tar.gz`.
+- CI builds: Push a tag like `v0.2.0` (or run the workflow manually) to trigger `.github/workflows/release-build.yml`. It builds on `ubuntu-latest`, `macos-latest`, and `windows-latest`, then uploads platform archives as both artifacts and GitHub Release assets.
+- **Platform caveats:**
+  - **Linux / macOS:** The binary still requires root (or `CAP_NET_RAW`) for raw packet transmission; this is an OS restriction, not a packaging bug.
+  - **Windows:** End users must install **Npcap** (or WinPcap) beforehand; the driver cannot be bundled.
+  - **All platforms:** Bundle size is ~200–400 MB because of Pandas, Plotly, and Scapy.
+- Smoke-test a fresh build with `./dist/batchroute/batchroute --help` and a quick probe (`--no-viz`) before publishing.

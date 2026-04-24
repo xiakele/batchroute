@@ -8,6 +8,7 @@ import time
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Any
 
 from scapy.config import conf as scapy_conf
 
@@ -192,26 +193,25 @@ def _list_interfaces() -> None:
         sys.exit(1)
 
 
-def _get_default_iface() -> str | None:
+def _get_default_iface() -> Any | None:
     try:
-        iface, _, _ = scapy_conf.route.route("0.0.0.0")
-        return str(iface)
+        iface_name, _, _ = scapy_conf.route.route("0.0.0.0")
+        for iface in scapy_conf.ifaces.values():
+            if str(iface) == str(iface_name):
+                return iface
     except Exception:
-        return None
+        pass
+    return None
 
 
-def _validate_iface(iface_name: str) -> str:
-    if iface_name in scapy_conf.ifaces:
-        return iface_name
+def _resolve_iface(name_or_iface: str) -> Any:
     for iface in scapy_conf.ifaces.values():
-        if getattr(iface, "name", None) == iface_name:
-            return str(iface)
-        if getattr(iface, "network_name", None) == iface_name:
-            return str(iface)
-        if str(iface) == iface_name:
-            return str(iface)
+        if iface == name_or_iface:
+            return iface
     print(
-        error(f"Interface '{iface_name}' not found. Use --list-interfaces to see available names."),
+        error(
+            f"Interface '{name_or_iface}' not found. Use --list-interfaces to see available names."
+        ),
         file=sys.stderr,
     )
     sys.exit(1)
@@ -233,8 +233,9 @@ def run(args: argparse.Namespace) -> None:
         print(error("-f/--input-file is required."), file=sys.stderr)
         sys.exit(1)
 
+    chosen_iface: Any | None = None
     if args.iface:
-        _validate_iface(args.iface)
+        chosen_iface = _resolve_iface(args.iface)
 
     targets = parse_targets(args.input_file)
     if not targets:
@@ -337,11 +338,11 @@ def run(args: argparse.Namespace) -> None:
         print(f"\nAll {len(cached_results)} target(s) cached — no probing needed.")
 
     # --- Interface selection ---
-    chosen_iface = args.iface or _get_default_iface()
-    if chosen_iface:
-        chosen_iface = _validate_iface(chosen_iface)
+    if chosen_iface is None:
+        chosen_iface = _get_default_iface()
+    if chosen_iface is not None:
         scapy_conf.iface = chosen_iface  # type: ignore[assignment]
-        _ensure_routes_use_iface(chosen_iface)
+        _ensure_routes_use_iface(str(chosen_iface))
 
     if not args.no_viz:
         _launch_visualizer_background(output_dir, set(targets))
@@ -350,7 +351,8 @@ def run(args: argparse.Namespace) -> None:
 
     # --- Probing phase ---
     if needs_probing:
-        print(f"\n{heading('Interface')}  {dim(str(scapy_conf.iface))}")
+        iface_label = chosen_iface.name if chosen_iface is not None else "default"
+        print(f"\n{heading('Interface')}  {dim(iface_label)}")
         proto_list = ", ".join(p.value for p in protocols)
         print(f"\n{heading('Probing')}  {len(targets_to_probe)} target(s)")
         print(f"  {dim(f'protocols: {proto_list}')}")

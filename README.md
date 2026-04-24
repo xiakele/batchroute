@@ -73,7 +73,7 @@ The packet engine:
 Dash application built with `dash-cytoscape` and `plotly`:
 - **Topology graph** (`breadthfirst` layout, rooted at a synthetic “Source” node). Nodes represent routers or destinations; edges represent protocol-specific links. Missing hops render as `*` nodes.
 - **Protocol filtering** via checkboxes in the legend dynamically rebuilds the graph and charts.
-- **Click-to-focus**: selecting a destination target dims all unrelated nodes and edges to 12 % opacity.
+- **Click-to-focus**: selecting a node dims all unrelated nodes and edges to 12 % opacity.
 - **Detail panel** shows hop metadata (IP, hostname, TTL, RTT, loss) when a node or edge is clicked.
 - **Progress table** lists every target with its current hop count, probing status, and destination-reached state.
 - **RTT chart** displays per-TTL median RTT per protocol, with an optional per-target trace overlay.

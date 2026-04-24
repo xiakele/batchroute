@@ -216,8 +216,10 @@ def _get_default_iface() -> Any | None:
     except Exception:
         pass
 
-    default_routes = [r for r in scapy_conf.route.routes if r[0] == "0.0.0.0" and r[1] == "0.0.0.0"]
-    default_routes.sort(key=lambda r: r[4])
+    default_routes = [
+        r for r in scapy_conf.route.routes if r[0] in (0, "0.0.0.0") and r[1] in (0, "0.0.0.0")
+    ]
+    default_routes.sort(key=lambda r: r[5])
 
     for route in default_routes:
         for iface in scapy_conf.ifaces.values():

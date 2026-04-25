@@ -67,10 +67,46 @@ jobs:
           )
           "
 
+      - name: Generate release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cat > release-notes.md << 'EOF'
+          ## batchroute ${{ github.ref_name }}
+
+          Batch traceroute tool with topology visualization.
+
+          ### Downloads
+
+          | Platform | Architecture | Archive |
+          |----------|--------------|---------|
+          | Linux | x86_64 | `batchroute-${{ github.ref_name }}-linux-x86_64.tar.gz` |
+          | macOS | ARM64 | `batchroute-${{ github.ref_name }}-macos-arm64.tar.gz` |
+          | macOS | Intel (x86_64) | `batchroute-${{ github.ref_name }}-macos-x86_64.tar.gz` |
+          | Windows | x86_64 | `batchroute-${{ github.ref_name }}-windows-x86_64.zip` |
+
+          ### Platform Notes
+
+          - **Linux / macOS:** The binary requires root (or `CAP_NET_RAW`) for raw packet transmission. This is an OS security restriction.
+          - **Windows:** Users must install [Npcap](https://npcap.com/) (or WinPcap) beforehand; the driver cannot be bundled.
+
+          ### Quick Start
+
+          ```bash
+          # Extract and run
+          ./batchroute --help
+
+          # Example probe
+          sudo ./batchroute 1.1.1.1
+          sudo ./batchroute -f targets.txt
+          ```
+          EOF
+
       - name: Upload Release Asset
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
           files: batchroute-*
+          body_path: release-notes.md
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

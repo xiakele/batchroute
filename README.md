@@ -34,7 +34,7 @@ The tool is designed to compare how Internet routing handles different transport
 
 #### `src/main.py`
 Wires the entire flow:
-1. Parses CLI arguments (`-f`, `-m`, `-M`, `-q`, `-p`, `-P`, …).
+1. Parses CLI arguments (`-f`, positional targets, `-m`, `-M`, `-q`, `-p`, `-P`, …).
 2. Reads and validates the target list.
 3. Resolves domain names to IPs before probing begins.
 4. Manages the output directory: loads cached complete results, prompts on `--force` overwrite, and writes a `.targets` manifest so the visualizer knows which JSON files belong to the current run.
@@ -46,7 +46,7 @@ Wires the entire flow:
 Central location for defaults (TTL bounds, query count, packet size, timeout, output directory) and the `Protocol` enum used throughout the codebase.
 
 #### `src/parser.py`
-Accepts `.txt` (one target per line) and `.csv` (first column) files. Validates each entry as either a legal IPv4/IPv6 address or a plausible hostname. Invalid entries are silently skipped.
+Accepts `.txt` (one target per line) and `.csv` (first column) files, as well as positional command-line targets. Validates each entry as either a legal IPv4/IPv6 address or a plausible hostname. Invalid entries are warned and skipped.
 
 #### `src/resolver.py`
 - `resolve_hostname` queries A then AAAA records via `dnspython`.

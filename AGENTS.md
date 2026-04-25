@@ -3,7 +3,7 @@
 ## Commands
 - Sync deps with `uv sync` (`uv.lock` is committed; keep it in sync after dependency changes).
 - CLI entrypoint is `uv run batchroute ...`.
-- Real packet probing needs root on Linux because `scapy` sends raw packets. Use `sudo $(which uv) run batchroute -f <targets-file>` for end-to-end prober tests.
+- Real packet probing needs root on Linux because `scapy` sends raw packets. Use `sudo $(which uv) run batchroute -f <targets-file>` (or `sudo $(which uv) run batchroute <target> …`) for end-to-end prober tests.
 - Standalone visualizer: `uv run python -m visualizer.app --results-dir results/`.
 - Mock data generator (visualizer stress testing): `uv run python scripts/generate_mock_routes.py [--count 100] [--seed N] [--force]`.
 

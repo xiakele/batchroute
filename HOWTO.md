@@ -53,9 +53,17 @@ example.com
 
 ### Basic usage (with visualization)
 
+Using an input file:
+
 ```bash
 # Linux — root required for raw packets
 sudo $(which uv) run batchroute -f targets.txt
+```
+
+Or pass targets directly on the command line:
+
+```bash
+sudo $(which uv) run batchroute 1.1.1.1 8.8.8.8 cloudflare.com
 ```
 
 On success the CLI will:
@@ -68,7 +76,7 @@ On success the CLI will:
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-f FILE` | Input file (`.txt` or `.csv`) | **required** |
+| `-f FILE` | Input file (`.txt` or `.csv`) | optional |
 | `-m N` | Maximum TTL | 30 |
 | `-M N` | Minimum / starting TTL | 1 |
 | `-q N` | Probe series (queries) per TTL step | 3 |
@@ -96,6 +104,12 @@ Run non-interactively (no browser UI) with a custom output directory:
 
 ```bash
 sudo $(which uv) run batchroute -f targets.txt --no-viz -o ./my_results
+```
+
+Probe specific targets directly from the command line:
+
+```bash
+sudo $(which uv) run batchroute 1.1.1.1 8.8.8.8 cloudflare.com --no-viz
 ```
 
 Force re-run everything without prompting:

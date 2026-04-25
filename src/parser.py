@@ -9,7 +9,7 @@ import pandas as pd
 _HOSTNAME_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$")
 
 
-def parse_targets(filepath: str) -> list[str]:
+def parse_targets(filepath: str) -> tuple[list[str], list[str]]:
     path = Path(filepath)
     if not path.exists():
         raise FileNotFoundError(f"Input file not found: {filepath}")
@@ -20,26 +20,34 @@ def parse_targets(filepath: str) -> list[str]:
     return _parse_txt(path)
 
 
-def _parse_csv(path: Path) -> list[str]:
+def _parse_csv(path: Path) -> tuple[list[str], list[str]]:
     df = pd.read_csv(path, header=None)
-    targets = []
+    targets: list[str] = []
+    invalid: list[str] = []
     for val in df.iloc[:, 0]:
         entry = str(val).strip()
-        if _is_valid_target(entry):
+        if is_valid_target(entry):
             targets.append(entry)
-    return targets
+        elif entry:
+            invalid.append(entry)
+    return targets, invalid
 
 
-def _parse_txt(path: Path) -> list[str]:
-    targets = []
+def _parse_txt(path: Path) -> tuple[list[str], list[str]]:
+    targets: list[str] = []
+    invalid: list[str] = []
     for line in path.read_text().splitlines():
         entry = line.strip()
-        if entry and _is_valid_target(entry):
+        if not entry:
+            continue
+        if is_valid_target(entry):
             targets.append(entry)
-    return targets
+        else:
+            invalid.append(entry)
+    return targets, invalid
 
 
-def _is_valid_target(addr: str) -> bool:
+def is_valid_target(addr: str) -> bool:
     if _is_valid_ip(addr):
         return True
     return _looks_like_hostname(addr)

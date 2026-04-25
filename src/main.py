@@ -26,7 +26,7 @@ from src.config import (
 )
 from src.models import TracerouteResult
 from src.output import bold, cyan, dim, error, green, heading, red, warning
-from src.parser import parse_targets
+from src.parser import is_valid_target, parse_targets
 from src.prober import ProbeConfig, trace_single_target
 from src.resolver import clear_cache, resolve_hostname, resolve_result
 
@@ -38,10 +38,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p.add_argument(
+        "targets",
+        nargs="*",
+        metavar="TARGET",
+        help="One or more target IP addresses or domain names.",
+    )
+    p.add_argument(
         "-f",
         "--input-file",
         default=None,
-        help="Path to a .txt or .csv file containing target IP addresses or domain names.",
+        help=(
+            "Path to a .txt or .csv file containing target IP addresses or domain names"
+            " (alternative to positional targets)."
+        ),
     )
     p.add_argument(
         "-m",
@@ -254,17 +263,36 @@ def run(args: argparse.Namespace) -> None:
         _list_interfaces()
         sys.exit(0)
 
-    if args.input_file is None:
-        print(error("-f/--input-file is required."), file=sys.stderr)
+    if args.input_file is not None and args.targets:
+        print(error("Cannot use both -f/--input-file and command-line targets."), file=sys.stderr)
+        sys.exit(1)
+
+    if args.input_file is None and not args.targets:
+        print(
+            error("No targets provided. Use -f/--input-file or specify targets directly."),
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     chosen_iface: Any | None = None
     if args.iface:
         chosen_iface = _resolve_iface(args.iface)
 
-    targets = parse_targets(args.input_file)
+    targets: list[str] = []
+    if args.input_file is not None:
+        file_targets, invalid_entries = parse_targets(args.input_file)
+        for entry in invalid_entries:
+            print(warning(f"Skipping invalid target from file: {entry}"))
+        targets = file_targets
+    else:
+        for entry in args.targets:
+            if is_valid_target(entry):
+                targets.append(entry)
+            else:
+                print(warning(f"Skipping invalid target: {entry}"))
+
     if not targets:
-        print(error("No valid targets found in input file."), file=sys.stderr)
+        print(error("No valid targets found."), file=sys.stderr)
         sys.exit(1)
 
     # --- DNS resolution phase ---
@@ -287,7 +315,7 @@ def run(args: argparse.Namespace) -> None:
     targets = [t for t in targets if t not in skipped]
 
     if not targets:
-        print(error("No valid targets found in input file."), file=sys.stderr)
+        print(error("No valid targets found."), file=sys.stderr)
         sys.exit(1)
 
     # --- Output dir / cache setup ---

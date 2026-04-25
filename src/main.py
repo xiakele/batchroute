@@ -448,7 +448,7 @@ def run(args: argparse.Namespace) -> None:
         parts.append(f"{green(str(reached))} reached")
     if not_reached:
         parts.append(f"{red(str(not_reached))} not reached")
-    print(f"\n{bold('Done.')} {' | '.join(parts)}  {dim(str(output_dir) + '/')}")
+    print(f"\n{bold('Done.')} {' | '.join(parts)}  {dim(str(output_dir))}")
 
     if not args.no_viz:
         try:

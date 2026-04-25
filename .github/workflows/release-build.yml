@@ -73,6 +73,7 @@ jobs:
           python -c "
           import os
           tag = os.environ['GITHUB_REF_NAME']
+          version = tag.lstrip('v')
           repo = os.environ['GITHUB_REPOSITORY']
           url_base = f'https://github.com/{repo}/releases/download/{tag}'
           body = f'''## batchroute {tag}
@@ -83,10 +84,10 @@ jobs:
 
           | Platform | Architecture | Archive |
           |----------|--------------|---------|
-          | Linux | x86_64 | [batchroute-{tag}-linux-x86_64.tar.gz]({url_base}/batchroute-{tag}-linux-x86_64.tar.gz) |
-          | macOS | ARM64 | [batchroute-{tag}-macos-arm64.tar.gz]({url_base}/batchroute-{tag}-macos-arm64.tar.gz) |
-          | macOS | Intel (x86_64) | [batchroute-{tag}-macos-x86_64.tar.gz]({url_base}/batchroute-{tag}-macos-x86_64.tar.gz) |
-          | Windows | x86_64 | [batchroute-{tag}-windows-x86_64.zip]({url_base}/batchroute-{tag}-windows-x86_64.zip) |
+          | Linux | x86_64 | [batchroute-{tag}-linux-x86_64.tar.gz]({url_base}/batchroute-{version}-linux-x86_64.tar.gz) |
+          | macOS | ARM64 | [batchroute-{tag}-macos-arm64.tar.gz]({url_base}/batchroute-{version}-macos-arm64.tar.gz) |
+          | macOS | Intel (x86_64) | [batchroute-{tag}-macos-x86_64.tar.gz]({url_base}/batchroute-{version}-macos-x86_64.tar.gz) |
+          | Windows | x86_64 | [batchroute-{tag}-windows-x86_64.zip]({url_base}/batchroute-{version}-windows-x86_64.zip) |
 
           ### Platform Notes
 

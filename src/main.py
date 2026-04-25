@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ipaddress
+import socket
 import sys
 import threading
 import time
@@ -25,7 +26,17 @@ from src.config import (
     Protocol,
 )
 from src.models import TracerouteResult
-from src.output import bold, cyan, dim, error, green, heading, red, warning
+from src.output import (
+    bold,
+    chown_to_invoking_user,
+    cyan,
+    dim,
+    error,
+    green,
+    heading,
+    red,
+    warning,
+)
 from src.parser import is_valid_target, parse_targets
 from src.prober import ProbeConfig, trace_single_target
 from src.resolver import clear_cache, resolve_hostname, resolve_result
@@ -258,6 +269,19 @@ def _ensure_routes_use_iface(iface_name: str) -> None:
     ]
 
 
+def _check_probe_privileges() -> None:
+    try:
+        raw_sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
+        raw_sock.close()
+    except (PermissionError, OSError):
+        if sys.platform == "win32":
+            msg = "Administrator privileges are required for probing. Run as Administrator."
+        else:
+            msg = "Raw socket access is required for probing. Run with sudo (or grant CAP_NET_RAW)."
+        print(error(msg), file=sys.stderr)
+        sys.exit(1)
+
+
 def run(args: argparse.Namespace) -> None:
     if args.list_interfaces:
         _list_interfaces()
@@ -338,6 +362,7 @@ def run(args: argparse.Namespace) -> None:
                     print("  Aborted.")
                     sys.exit(0)
         output_dir.mkdir(parents=True, exist_ok=True)
+        chown_to_invoking_user(output_dir)
         for t in targets:
             p = output_dir / f"{t}.json"
             if p.exists():
@@ -349,8 +374,11 @@ def run(args: argparse.Namespace) -> None:
         if existing:
             print(f"  {len(existing)} existing result file(s) found.")
         output_dir.mkdir(parents=True, exist_ok=True)
+        chown_to_invoking_user(output_dir)
 
-    (output_dir / ".targets").write_text("\n".join(targets) + "\n")
+    targets_manifest = output_dir / ".targets"
+    targets_manifest.write_text("\n".join(targets) + "\n")
+    chown_to_invoking_user(targets_manifest)
 
     # --- Cache loading phase ---
     cached_results: list[TracerouteResult] = []
@@ -403,6 +431,9 @@ def run(args: argparse.Namespace) -> None:
                 "Use --list-interfaces and --iface to specify one."
             )
         )
+
+    if needs_probing:
+        _check_probe_privileges()
 
     if not args.no_viz:
         _launch_visualizer_background(output_dir, set(targets))
@@ -459,6 +490,7 @@ def run(args: argparse.Namespace) -> None:
                 if not args.no_dns:
                     resolve_result(result)
                     result.to_json(output_dir / f"{target}.json")
+                    chown_to_invoking_user(output_dir / f"{target}.json")
 
                 results.append(result)
                 dest_label = green("reached") if result.destination_reached else red("not reached")

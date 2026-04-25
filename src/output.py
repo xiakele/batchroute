@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 _NO_COLOR = not sys.stderr.isatty() or os.environ.get("NO_COLOR", "") != ""
 
@@ -56,3 +57,20 @@ def warning(text: str) -> str:
 
 def error(text: str) -> str:
     return red(text)
+
+
+def chown_to_invoking_user(path: Path) -> None:
+    try:
+        euid = os.geteuid()
+    except AttributeError:
+        return
+    if euid != 0:
+        return
+    uid = os.environ.get("SUDO_UID")
+    gid = os.environ.get("SUDO_GID")
+    if uid is None or gid is None:
+        return
+    try:
+        os.chown(path, int(uid), int(gid))
+    except OSError:
+        pass

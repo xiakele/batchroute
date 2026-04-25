@@ -21,6 +21,7 @@ from src.config import (
     Protocol,
 )
 from src.models import Hop, TracerouteResult
+from src.output import chown_to_invoking_user
 
 
 @dataclass
@@ -134,11 +135,13 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
 
             if config.output_path is not None:
                 result.to_json(config.output_path)
+                chown_to_invoking_user(config.output_path)
 
     result.destination_reached = destination_reached
     result.probing_complete = True
 
     if config.output_path is not None:
         result.to_json(config.output_path)
+        chown_to_invoking_user(config.output_path)
 
     return result

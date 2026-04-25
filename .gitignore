@@ -211,4 +211,5 @@ __marimo__/
 .claude/
 results/
 mock_results/
+reference/
 !/batchroute.spec

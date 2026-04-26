@@ -447,9 +447,25 @@ def run(args: argparse.Namespace) -> None:
         proto_list = ", ".join(p.value for p in protocols)
         print(f"\n{heading('Probing')}  {len(targets_to_probe)} target(s)")
         print(f"  {dim(f'protocols: {proto_list}')}")
-        from src.geoip import warn_if_db_missing
 
-        warn_if_db_missing()
+        from src.geoip import DB_PATH, download_geolite2_db
+
+        if not DB_PATH.exists():
+            downloaded = False
+            if sys.stdin.isatty():
+                try:
+                    answer = (
+                        input("  GeoLite2 database not found. Download now? [y/N] ").strip().lower()
+                    )
+                except EOFError:
+                    answer = "n"
+                if answer == "y":
+                    downloaded = download_geolite2_db()
+                    if downloaded:
+                        chown_to_invoking_user(DB_PATH)
+            if not downloaded:
+                msg = f"GeoLite2 database not found at {DB_PATH} — geo lookup skipped"
+                print(f"  {warning(msg)}")
 
         for t in targets_to_probe:
             ip = resolved_ips.get(t)

@@ -205,6 +205,38 @@ def _build_graph_elements(
     return list(nodes.values()) + list(edges.values())
 
 
+def _targets_with_node(
+    results: list[TracerouteResult],
+    node_id: str,
+) -> set[str]:
+    """Return target names whose paths include *node_id*."""
+    targets: set[str] = set()
+    for result in results:
+        target_id = result.target
+        if node_id == target_id:
+            targets.add(target_id)
+            continue
+
+        resolved_ip = getattr(result, "resolved_ip", None) or None
+        target_ips: set[str] = set()
+        if resolved_ip:
+            target_ips.add(resolved_ip)
+
+        for hop in result.hops:
+            if hop.ip is None:
+                hop_node_id = f"*_{result.target}_{hop.ttl}_{hop.protocol.value}"
+            elif hop.ip in target_ips:
+                hop_node_id = target_id
+            else:
+                hop_node_id = hop.ip
+
+            if node_id == hop_node_id:
+                targets.add(target_id)
+                break
+
+    return targets
+
+
 def _node_label(ip: str, hostname: str | None) -> str:
     if hostname:
         return f"{hostname}\n({ip})"
@@ -440,14 +472,19 @@ def _build_rtt_chart(
     per_target: bool,
     protocols: set[str] | None = None,
     uirevision: str = "batchroute",
+    focused_targets: set[str] | None = None,
 ) -> go.Figure:
     if protocols is None:
         protocols = set(PROTOCOL_COLORS.keys())
 
+    per_target_results = results
+    if focused_targets is not None:
+        per_target_results = [r for r in results if r.target in focused_targets]
+
     fig = go.Figure()
 
     if per_target:
-        for result in results:
+        for result in per_target_results:
             by_protocol: dict[str, list] = {}
             for hop in result.hops:
                 by_protocol.setdefault(hop.protocol.value, []).append(hop)
@@ -502,14 +539,19 @@ def _build_loss_chart(
     per_target: bool,
     protocols: set[str] | None = None,
     uirevision: str = "batchroute",
+    focused_targets: set[str] | None = None,
 ) -> go.Figure:
     if protocols is None:
         protocols = set(PROTOCOL_COLORS.keys())
 
+    per_target_results = results
+    if focused_targets is not None:
+        per_target_results = [r for r in results if r.target in focused_targets]
+
     fig = go.Figure()
 
     if per_target:
-        for result in results:
+        for result in per_target_results:
             by_protocol: dict[str, list] = {}
             for hop in result.hops:
                 by_protocol.setdefault(hop.protocol.value, []).append(hop)
@@ -756,15 +798,17 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
         results = _load_results(results_dir, targets)
         per_target = bool(per_target_value)
         protocols = set(proto_value) if proto_value else set()
+        focused_targets = _targets_with_node(results, focused_node) if focused_node else None
         pt_flag = "1" if per_target else "0"
         proto_key = ",".join(sorted(protocols)) if protocols else "none"
-        uirevision = f"batchroute-{pt_flag}-{proto_key}"
+        focus_key = focused_node if focused_node else "none"
+        uirevision = f"batchroute-{pt_flag}-{proto_key}-{focus_key}"
         return (
             _build_graph_elements(results, protocols, focused_node),
             _build_stats_bar(results),
             _build_progress_table(results),
-            _build_rtt_chart(results, per_target, protocols, uirevision),
-            _build_loss_chart(results, per_target, protocols, uirevision),
+            _build_rtt_chart(results, per_target, protocols, uirevision, focused_targets),
+            _build_loss_chart(results, per_target, protocols, uirevision, focused_targets),
         )
 
     @app.callback(

@@ -447,6 +447,9 @@ def run(args: argparse.Namespace) -> None:
         proto_list = ", ".join(p.value for p in protocols)
         print(f"\n{heading('Probing')}  {len(targets_to_probe)} target(s)")
         print(f"  {dim(f'protocols: {proto_list}')}")
+        from src.geoip import warn_if_db_missing
+
+        warn_if_db_missing()
 
         for t in targets_to_probe:
             ip = resolved_ips.get(t)

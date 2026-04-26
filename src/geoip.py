@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from src.output import warning
+
 logger = logging.getLogger(__name__)
 
 DB_PATH = Path("data/GeoLite2-City.mmdb")
@@ -40,13 +42,17 @@ def _is_internal_ip(ip: str) -> bool:
         return False
 
 
+def warn_if_db_missing() -> None:
+    if not DB_PATH.exists():
+        print(f"  {warning(f'GeoLite2 database not found at {DB_PATH} — geo lookup skipped')}")
+
+
 @lru_cache(maxsize=512)
 def lookup_ip(ip: str) -> GeoData | None:
     if _is_internal_ip(ip):
         return GeoData(is_internal=True)
 
     if not DB_PATH.exists():
-        logger.warning("GeoLite2 database not found at %s — geo lookup skipped", DB_PATH)
         return None
 
     try:

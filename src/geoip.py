@@ -8,7 +8,7 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.request import urlopen
 
-from src.output import dim, success, warning
+from src.output import chown_to_invoking_user, dim, success, warning
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,9 @@ def _is_internal_ip(ip: str) -> bool:
 
 
 def download_geolite2_db() -> bool:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if not DB_PATH.parent.exists():
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        chown_to_invoking_user(DB_PATH.parent)
     print(f"  {dim('Downloading GeoLite2 database ...')}")
     try:
         with urlopen(DB_URL, timeout=30) as response:

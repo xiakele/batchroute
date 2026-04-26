@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from src.config import Protocol
+from src.output import chown_to_invoking_user
 
 
 @dataclass
@@ -94,7 +95,9 @@ class TracerouteResult:
         )
 
     def to_json(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.parent.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            chown_to_invoking_user(path.parent)
         with open(path, "w") as f:
             json.dump(self.to_dict(), f, indent=2)
 

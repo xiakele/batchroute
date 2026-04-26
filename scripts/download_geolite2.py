@@ -3,14 +3,18 @@ from __future__ import annotations
 import urllib.request
 from pathlib import Path
 
+from src.output import chown_to_invoking_user
+
 URL = "https://git.io/GeoLite2-City.mmdb"
 DEST = Path("data/GeoLite2-City.mmdb")
 
 
 def main() -> None:
     DEST.parent.mkdir(parents=True, exist_ok=True)
+    chown_to_invoking_user(DEST.parent)
     print(f"Downloading GeoLite2-City database to {DEST} ...")
     urllib.request.urlretrieve(URL, DEST)
+    chown_to_invoking_user(DEST)
     print(f"Done. Saved {DEST.stat().st_size:,} bytes.")
 
 

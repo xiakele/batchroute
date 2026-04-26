@@ -147,6 +147,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip launching the visualizer after probing.",
     )
     p.add_argument(
+        "--no-geo",
+        action="store_true",
+        help="Skip GeoIP lookup for hop locations.",
+    )
+    p.add_argument(
         "-w",
         "--workers",
         type=int,
@@ -450,7 +455,7 @@ def run(args: argparse.Namespace) -> None:
 
         from src.geoip import DB_PATH, download_geolite2_db
 
-        if not DB_PATH.exists():
+        if not args.no_geo and not DB_PATH.exists():
             downloaded = False
             if sys.stdin.isatty():
                 try:
@@ -489,6 +494,7 @@ def run(args: argparse.Namespace) -> None:
                 protocols=protocols,
                 output_path=output_dir / f"{t}.json",
                 resolved_ip=resolved_ips.get(t),
+                geo=not args.no_geo,
             )
             for t in targets_to_probe
         }

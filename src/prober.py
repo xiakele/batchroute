@@ -39,6 +39,7 @@ class ProbeConfig:
     protocols: list[Protocol] = field(default_factory=lambda: list(ALL_PROTOCOLS))
     output_path: Path | None = None
     resolved_ip: str | None = None
+    geo: bool = True
 
 
 def _payload_size(total_size: int) -> int:
@@ -132,7 +133,7 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
                 if config.wait > 0:
                     time.sleep(config.wait)
 
-            if hop.ip:
+            if config.geo and hop.ip:
                 geo = lookup_ip(hop.ip)
                 if geo:
                     hop.country_code = geo.country_code
@@ -149,18 +150,19 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
     result.destination_reached = destination_reached
     result.probing_complete = True
 
-    target_geo_ip = config.resolved_ip or config.target
-    if target_geo_ip:
-        try:
-            ipaddress.ip_address(target_geo_ip)
-            geo = lookup_ip(target_geo_ip)
-            if geo:
-                result.country_code = geo.country_code
-                result.lat = geo.lat
-                result.lon = geo.lon
-                result.is_internal = geo.is_internal
-        except ValueError:
-            pass
+    if config.geo:
+        target_geo_ip = config.resolved_ip or config.target
+        if target_geo_ip:
+            try:
+                ipaddress.ip_address(target_geo_ip)
+                geo = lookup_ip(target_geo_ip)
+                if geo:
+                    result.country_code = geo.country_code
+                    result.lat = geo.lat
+                    result.lon = geo.lon
+                    result.is_internal = geo.is_internal
+            except ValueError:
+                pass
 
     if config.output_path is not None:
         result.to_json(config.output_path)

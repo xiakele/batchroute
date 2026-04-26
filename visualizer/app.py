@@ -436,7 +436,10 @@ def _edge_details(data: dict) -> list:
 
 
 def _build_rtt_chart(
-    results: list[TracerouteResult], per_target: bool, protocols: set[str] | None = None
+    results: list[TracerouteResult],
+    per_target: bool,
+    protocols: set[str] | None = None,
+    uirevision: str = "batchroute",
 ) -> go.Figure:
     if protocols is None:
         protocols = set(PROTOCOL_COLORS.keys())
@@ -487,6 +490,7 @@ def _build_rtt_chart(
 
     fig.update_layout(
         **PLOTLY_LAYOUT,
+        uirevision=uirevision,
         xaxis_title="TTL",
         yaxis_title="RTT (ms)",
     )
@@ -494,7 +498,10 @@ def _build_rtt_chart(
 
 
 def _build_loss_chart(
-    results: list[TracerouteResult], per_target: bool, protocols: set[str] | None = None
+    results: list[TracerouteResult],
+    per_target: bool,
+    protocols: set[str] | None = None,
+    uirevision: str = "batchroute",
 ) -> go.Figure:
     if protocols is None:
         protocols = set(PROTOCOL_COLORS.keys())
@@ -541,6 +548,7 @@ def _build_loss_chart(
 
     fig.update_layout(
         **PLOTLY_LAYOUT,
+        uirevision=uirevision,
         xaxis_title="TTL",
         yaxis_title="Loss (%)",
         barmode="group",
@@ -748,12 +756,15 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
         results = _load_results(results_dir, targets)
         per_target = bool(per_target_value)
         protocols = set(proto_value) if proto_value else set()
+        pt_flag = "1" if per_target else "0"
+        proto_key = ",".join(sorted(protocols)) if protocols else "none"
+        uirevision = f"batchroute-{pt_flag}-{proto_key}"
         return (
             _build_graph_elements(results, protocols, focused_node),
             _build_stats_bar(results),
             _build_progress_table(results),
-            _build_rtt_chart(results, per_target, protocols),
-            _build_loss_chart(results, per_target, protocols),
+            _build_rtt_chart(results, per_target, protocols, uirevision),
+            _build_loss_chart(results, per_target, protocols, uirevision),
         )
 
     @app.callback(

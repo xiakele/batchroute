@@ -33,7 +33,6 @@ PLOTLY_LAYOUT = {
         "color": "#666",
     },
     "margin": {"l": 50, "r": 20, "t": 20, "b": 40},
-    "uirevision": "batchroute",
     "legend": {
         "orientation": "h",
         "yanchor": "bottom",

@@ -18,6 +18,8 @@ class Hop:
     country_code: str | None = None
     lat: float | None = None
     lon: float | None = None
+    asn_number: int | None = None
+    asn_org: str | None = None
     is_internal: bool = False
 
     @property
@@ -60,6 +62,8 @@ class TracerouteResult:
     country_code: str | None = None
     lat: float | None = None
     lon: float | None = None
+    asn_number: int | None = None
+    asn_org: str | None = None
     is_internal: bool = False
 
     def to_dict(self) -> dict:
@@ -73,6 +77,8 @@ class TracerouteResult:
             "country_code": self.country_code,
             "lat": self.lat,
             "lon": self.lon,
+            "asn_number": self.asn_number,
+            "asn_org": self.asn_org,
             "is_internal": self.is_internal,
         }
         if self.resolved_ip is None:
@@ -91,6 +97,8 @@ class TracerouteResult:
             country_code=d.get("country_code"),
             lat=d.get("lat"),
             lon=d.get("lon"),
+            asn_number=d.get("asn_number"),
+            asn_org=d.get("asn_org"),
             is_internal=d.get("is_internal", False),
         )
 

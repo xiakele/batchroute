@@ -25,6 +25,7 @@ from src.config import (
     DEFAULT_WAIT,
     Protocol,
 )
+from src.geoip import ASN_DB_PATH, CITY_DB_PATH, download_geolite2_db
 from src.models import TracerouteResult
 from src.output import (
     bold,
@@ -453,24 +454,60 @@ def run(args: argparse.Namespace) -> None:
         print(f"\n{heading('Probing')}  {len(targets_to_probe)} target(s)")
         print(f"  {dim(f'protocols: {proto_list}')}")
 
-        from src.geoip import DB_PATH, download_geolite2_db
-
-        if not args.no_geo and not DB_PATH.exists():
-            downloaded = False
-            if sys.stdin.isatty():
-                try:
-                    answer = (
-                        input("  GeoLite2 database not found. Download now? [y/N] ").strip().lower()
-                    )
-                except EOFError:
-                    answer = "n"
-                if answer == "y":
-                    downloaded = download_geolite2_db()
-                    if downloaded:
-                        chown_to_invoking_user(DB_PATH)
-            if not downloaded:
-                msg = f"GeoLite2 database not found at {DB_PATH} — geo lookup skipped"
-                print(f"  {warning(msg)}")
+        if not args.no_geo:
+            city_missing = not CITY_DB_PATH.exists()
+            asn_missing = not ASN_DB_PATH.exists()
+            if city_missing or asn_missing:
+                downloaded_city = not city_missing
+                downloaded_asn = not asn_missing
+                if sys.stdin.isatty():
+                    if city_missing and asn_missing:
+                        try:
+                            answer = (
+                                input("  GeoLite2 databases not found. Download now? [y/N] ")
+                                .strip()
+                                .lower()
+                            )
+                        except EOFError:
+                            answer = "n"
+                        if answer == "y":
+                            downloaded_city, downloaded_asn = download_geolite2_db(
+                                city=True, asn=True
+                            )
+                    elif city_missing:
+                        try:
+                            answer = (
+                                input("  GeoLite2-City database not found. Download now? [y/N] ")
+                                .strip()
+                                .lower()
+                            )
+                        except EOFError:
+                            answer = "n"
+                        if answer == "y":
+                            downloaded_city, _ = download_geolite2_db(city=True, asn=False)
+                    elif asn_missing:
+                        try:
+                            answer = (
+                                input("  GeoLite2-ASN database not found. Download now? [y/N] ")
+                                .strip()
+                                .lower()
+                            )
+                        except EOFError:
+                            answer = "n"
+                        if answer == "y":
+                            _, downloaded_asn = download_geolite2_db(city=False, asn=True)
+                else:
+                    if city_missing:
+                        msg = (
+                            f"GeoLite2-City database not found at {CITY_DB_PATH}"
+                            " — geo lookup skipped"
+                        )
+                        print(f"  {warning(msg)}")
+                    if asn_missing:
+                        msg = (
+                            f"GeoLite2-ASN database not found at {ASN_DB_PATH} — ASN lookup skipped"
+                        )
+                        print(f"  {warning(msg)}")
 
         for t in targets_to_probe:
             ip = resolved_ips.get(t)

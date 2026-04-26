@@ -24,7 +24,7 @@ from src.config import (
     DEFAULT_WAIT,
     Protocol,
 )
-from src.geoip import lookup_ip
+from src.geoip import lookup_asn, lookup_ip
 from src.models import Hop, TracerouteResult
 from src.output import chown_to_invoking_user
 
@@ -176,6 +176,10 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
                     hop.lat = geo.lat
                     hop.lon = geo.lon
                     hop.is_internal = geo.is_internal
+                asn = lookup_asn(hop.ip)
+                if asn:
+                    hop.asn_number = asn.asn_number
+                    hop.asn_org = asn.asn_org
             hop.rtts = rtts
             result.hops.append(hop)
 
@@ -197,6 +201,10 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
                     result.lat = geo.lat
                     result.lon = geo.lon
                     result.is_internal = geo.is_internal
+                asn = lookup_asn(target_geo_ip)
+                if asn:
+                    result.asn_number = asn.asn_number
+                    result.asn_org = asn.asn_org
             except ValueError:
                 pass
 

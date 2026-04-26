@@ -104,6 +104,8 @@ def _build_graph_elements(
                     "country_code": result.country_code,
                     "lat": result.lat,
                     "lon": result.lon,
+                    "asn_number": result.asn_number,
+                    "asn_org": result.asn_org,
                     "is_internal": result.is_internal,
                 },
                 "classes": classes,
@@ -155,6 +157,8 @@ def _build_graph_elements(
                                 "country_code": hop.country_code,
                                 "lat": hop.lat,
                                 "lon": hop.lon,
+                                "asn_number": hop.asn_number,
+                                "asn_org": hop.asn_org,
                                 "is_internal": hop.is_internal,
                             },
                             "classes": "",
@@ -478,6 +482,10 @@ def _node_details(data: dict) -> list:
         pairs = [("IP", _ip_detail_widget(data))]
         if data.get("hostname"):
             pairs.append(("Hostname", str(data["hostname"])))
+        asn = data.get("asn_number")
+        org = data.get("asn_org")
+        if asn:
+            pairs.append(("ASN", f"AS{asn} {org or ''}".strip()))
         pairs.append(("Hops", str(data.get("hop_count", "—"))))
         if data.get("cached"):
             status_text = "Cached"
@@ -497,6 +505,10 @@ def _node_details(data: dict) -> list:
         pairs = [("IP", _ip_detail_widget(data))]
         if data.get("hostname"):
             pairs.append(("Hostname", str(data["hostname"])))
+        asn = data.get("asn_number")
+        org = data.get("asn_org")
+        if asn:
+            pairs.append(("ASN", f"AS{asn} {org or ''}".strip()))
         if data.get("ttl") is not None:
             pairs.append(("TTL", str(data["ttl"])))
         rtt = data.get("rtt")

@@ -12,8 +12,11 @@ from src.output import chown_to_invoking_user, dim, success, warning
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path("data/GeoLite2-City.mmdb")
-DB_URL = "https://git.io/GeoLite2-City.mmdb"
+CITY_DB_PATH = Path("data/GeoLite2-City.mmdb")
+CITY_DB_URL = "https://git.io/GeoLite2-City.mmdb"
+
+ASN_DB_PATH = Path("data/GeoLite2-ASN.mmdb")
+ASN_DB_URL = "https://git.io/GeoLite2-ASN.mmdb"
 
 _INTERNAL_NETWORKS = [
     ipaddress.ip_network("10.0.0.0/8"),
@@ -31,6 +34,8 @@ class GeoData:
     country_code: str | None = None
     lat: float | None = None
     lon: float | None = None
+    asn_number: int | None = None
+    asn_org: str | None = None
     is_internal: bool = False
 
 
@@ -45,19 +50,15 @@ def _is_internal_ip(ip: str) -> bool:
         return False
 
 
-def download_geolite2_db() -> bool:
-    if not DB_PATH.parent.exists():
-        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        chown_to_invoking_user(DB_PATH.parent)
-    print(f"  {dim('Downloading GeoLite2 database ...')}")
+def _download_db(url: str, path: Path) -> bool:
     try:
-        with urlopen(DB_URL, timeout=30) as response:
+        with urlopen(url, timeout=30) as response:
             total_size = response.headers.get("Content-Length")
             if total_size is not None:
                 total_size = int(total_size)
             downloaded = 0
             chunk_size = 8192
-            with open(DB_PATH, "wb") as f:
+            with open(path, "wb") as f:
                 while True:
                     chunk = response.read(chunk_size)
                     if not chunk:
@@ -72,11 +73,35 @@ def download_geolite2_db() -> bool:
             if total_size:
                 sys.stdout.write("\n")
                 sys.stdout.flush()
-        print(f"  {success('Download complete.')}")
         return True
     except Exception as exc:
         print(f"  {warning(f'Download failed: {exc}')}")
         return False
+
+
+def download_geolite2_db(city: bool = True, asn: bool = True) -> tuple[bool, bool]:
+    city_ok = True
+    asn_ok = True
+
+    if city and not CITY_DB_PATH.exists():
+        if not CITY_DB_PATH.parent.exists():
+            CITY_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+            chown_to_invoking_user(CITY_DB_PATH.parent)
+        print(f"  {dim('Downloading GeoLite2-City database ...')}")
+        city_ok = _download_db(CITY_DB_URL, CITY_DB_PATH)
+        if city_ok:
+            print(f"  {success('GeoLite2-City download complete.')}")
+
+    if asn and not ASN_DB_PATH.exists():
+        if not ASN_DB_PATH.parent.exists():
+            ASN_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+            chown_to_invoking_user(ASN_DB_PATH.parent)
+        print(f"  {dim('Downloading GeoLite2-ASN database ...')}")
+        asn_ok = _download_db(ASN_DB_URL, ASN_DB_PATH)
+        if asn_ok:
+            print(f"  {success('GeoLite2-ASN download complete.')}")
+
+    return city_ok, asn_ok
 
 
 @lru_cache(maxsize=512)
@@ -84,13 +109,13 @@ def lookup_ip(ip: str) -> GeoData | None:
     if _is_internal_ip(ip):
         return GeoData(is_internal=True)
 
-    if not DB_PATH.exists():
+    if not CITY_DB_PATH.exists():
         return None
 
     try:
         import geoip2.database
 
-        with geoip2.database.Reader(str(DB_PATH)) as reader:
+        with geoip2.database.Reader(str(CITY_DB_PATH)) as reader:
             response = reader.city(ip)
             cc = response.country.iso_code
             lat = response.location.latitude
@@ -103,4 +128,29 @@ def lookup_ip(ip: str) -> GeoData | None:
             )
     except Exception as exc:
         logger.debug("Geo lookup failed for %s: %s", ip, exc)
+        return None
+
+
+@lru_cache(maxsize=512)
+def lookup_asn(ip: str) -> GeoData | None:
+    if _is_internal_ip(ip):
+        return GeoData(is_internal=True)
+
+    if not ASN_DB_PATH.exists():
+        return None
+
+    try:
+        import geoip2.database
+
+        with geoip2.database.Reader(str(ASN_DB_PATH)) as reader:
+            response = reader.asn(ip)
+            asn = response.autonomous_system_number
+            org = response.autonomous_system_organization
+            return GeoData(
+                asn_number=asn,
+                asn_org=org,
+                is_internal=False,
+            )
+    except Exception as exc:
+        logger.debug("ASN lookup failed for %s: %s", ip, exc)
         return None

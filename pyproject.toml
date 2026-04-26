@@ -12,6 +12,7 @@ dependencies = [
     "dash",
     "dash-cytoscape",
     "plotly",
+    "geoip2",
 ]
 
 [build-system]

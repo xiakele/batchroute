@@ -14,6 +14,10 @@ class Hop:
     ip: str | None = None
     hostname: str | None = None
     rtts: list[float | None] = field(default_factory=list)
+    country_code: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    is_internal: bool = False
 
     @property
     def avg_rtt(self) -> float | None:
@@ -52,6 +56,10 @@ class TracerouteResult:
     probing_complete: bool = False
     cached: bool = False
     resolved_ip: str | None = None
+    country_code: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    is_internal: bool = False
 
     def to_dict(self) -> dict:
         d = {
@@ -61,6 +69,10 @@ class TracerouteResult:
             "probing_complete": self.probing_complete,
             "cached": self.cached,
             "hops": [h.to_dict() for h in self.hops],
+            "country_code": self.country_code,
+            "lat": self.lat,
+            "lon": self.lon,
+            "is_internal": self.is_internal,
         }
         if self.resolved_ip is None:
             del d["resolved_ip"]
@@ -75,6 +87,10 @@ class TracerouteResult:
             cached=d.get("cached", False),
             hops=[Hop.from_dict(h) for h in d.get("hops", [])],
             resolved_ip=d.get("resolved_ip"),
+            country_code=d.get("country_code"),
+            lat=d.get("lat"),
+            lon=d.get("lon"),
+            is_internal=d.get("is_internal", False),
         )
 
     def to_json(self, path: Path) -> None:

@@ -569,3 +569,27 @@ body {
     margin-bottom: 8px;
   }
 }
+
+/* ── IP detail widget ── */
+
+.ip-detail-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ip-flag {
+  width: 16px;
+  height: 12px;
+  border-radius: 2px;
+  object-fit: cover;
+  display: inline-block;
+}
+
+.ip-map-link {
+  text-decoration: none;
+  font-size: 14px;
+  line-height: 1;
+  margin-left: 2px;
+}

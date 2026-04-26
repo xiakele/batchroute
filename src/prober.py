@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +21,7 @@ from src.config import (
     DEFAULT_WAIT,
     Protocol,
 )
+from src.geoip import lookup_ip
 from src.models import Hop, TracerouteResult
 from src.output import chown_to_invoking_user
 
@@ -130,6 +132,13 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
                 if config.wait > 0:
                     time.sleep(config.wait)
 
+            if hop.ip:
+                geo = lookup_ip(hop.ip)
+                if geo:
+                    hop.country_code = geo.country_code
+                    hop.lat = geo.lat
+                    hop.lon = geo.lon
+                    hop.is_internal = geo.is_internal
             hop.rtts = rtts
             result.hops.append(hop)
 
@@ -139,6 +148,19 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
 
     result.destination_reached = destination_reached
     result.probing_complete = True
+
+    target_geo_ip = config.resolved_ip or config.target
+    if target_geo_ip:
+        try:
+            ipaddress.ip_address(target_geo_ip)
+            geo = lookup_ip(target_geo_ip)
+            if geo:
+                result.country_code = geo.country_code
+                result.lat = geo.lat
+                result.lon = geo.lon
+                result.is_internal = geo.is_internal
+        except ValueError:
+            pass
 
     if config.output_path is not None:
         result.to_json(config.output_path)

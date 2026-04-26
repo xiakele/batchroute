@@ -4,6 +4,7 @@ import argparse
 import logging
 import statistics
 from pathlib import Path
+from typing import Any
 
 import dash_cytoscape as cyto
 import flask.cli
@@ -99,6 +100,11 @@ def _build_graph_elements(
                     "probing_complete": result.probing_complete,
                     "cached": result.cached,
                     "hop_count": current_hops,
+                    "resolved_ip": result.resolved_ip,
+                    "country_code": result.country_code,
+                    "lat": result.lat,
+                    "lon": result.lon,
+                    "is_internal": result.is_internal,
                 },
                 "classes": classes,
             }
@@ -146,6 +152,10 @@ def _build_graph_elements(
                                 "rtt": hop.avg_rtt if hop.avg_rtt is not None else 0,
                                 "loss_rate": hop.loss_rate,
                                 "ttl": hop.ttl,
+                                "country_code": hop.country_code,
+                                "lat": hop.lat,
+                                "lon": hop.lon,
+                                "is_internal": hop.is_internal,
                             },
                             "classes": "",
                         }
@@ -404,11 +414,14 @@ def _build_legend() -> html.Div:
     )
 
 
-def _format_details_list(pairs: list[tuple[str, str]]) -> html.Dl:
+def _format_details_list(pairs: list[tuple[str, Any]]) -> html.Dl:
     children: list = []
     for k, v in pairs:
         children.append(html.Dt(k))
-        children.append(html.Dd(v))
+        if isinstance(v, str):
+            children.append(html.Dd(v))
+        else:
+            children.append(v)
     return html.Dl(className="details-list", children=children)
 
 
@@ -416,13 +429,53 @@ def _empty_details() -> list:
     return [html.Div("Click a node or edge to see details.", className="details-empty")]
 
 
+def _ip_detail_widget(data: dict) -> html.Dd:
+    ip = data.get("resolved_ip") or str(data.get("id", "?"))
+    is_internal = data.get("is_internal", False)
+    cc = data.get("country_code")
+    lat = data.get("lat")
+    lon = data.get("lon")
+
+    children: list = []
+
+    if is_internal:
+        children.append(html.Span("🏠", title="Internal address"))
+    elif cc:
+        children.append(
+            html.Img(
+                src=f"https://flagcdn.com/h20/{cc.lower()}.png",
+                alt=cc,
+                title=cc,
+                className="ip-flag",
+            )
+        )
+    else:
+        children.append(html.Span("🏳️", title="Unknown location"))
+
+    children.append(html.Span(ip, className="ip-text"))
+
+    if not is_internal and lat is not None and lon is not None:
+        children.append(
+            html.A(
+                "🗺️",
+                href=f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}&zoom=12",
+                target="_blank",
+                rel="noopener noreferrer",
+                title="Show on map",
+                className="ip-map-link",
+            )
+        )
+
+    return html.Dd(children, className="ip-detail-row")
+
+
 def _node_details(data: dict) -> list:
     if data.get("id") == SOURCE_NODE_ID:
         kind = "Source"
-        pairs: list[tuple[str, str]] = [("Role", "Probe origin")]
+        pairs: list[tuple[str, Any]] = [("Role", "Probe origin")]
     elif data.get("is_target"):
         kind = "Destination"
-        pairs = [("IP", str(data.get("id", "?")))]
+        pairs = [("IP", _ip_detail_widget(data))]
         if data.get("hostname"):
             pairs.append(("Hostname", str(data["hostname"])))
         pairs.append(("Hops", str(data.get("hop_count", "—"))))
@@ -441,7 +494,7 @@ def _node_details(data: dict) -> list:
         ]
     else:
         kind = "Router"
-        pairs = [("IP", str(data.get("id", "?")))]
+        pairs = [("IP", _ip_detail_widget(data))]
         if data.get("hostname"):
             pairs.append(("Hostname", str(data["hostname"])))
         if data.get("ttl") is not None:

@@ -487,7 +487,6 @@ def _build_rtt_chart(
 
     fig.update_layout(
         **PLOTLY_LAYOUT,
-        title=dict(text="RTT per Hop", font=dict(size=13)),
         xaxis_title="TTL",
         yaxis_title="RTT (ms)",
     )
@@ -542,7 +541,6 @@ def _build_loss_chart(
 
     fig.update_layout(
         **PLOTLY_LAYOUT,
-        title=dict(text="Loss Rate per Hop", font=dict(size=13)),
         xaxis_title="TTL",
         yaxis_title="Loss (%)",
         barmode="group",
@@ -696,6 +694,7 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
                     html.Div(
                         className="card chart-card",
                         children=[
+                            html.Div("RTT per Hop", className="card-title"),
                             dcc.Graph(
                                 id="rtt-chart",
                                 style={"height": "var(--chart-h)"},
@@ -706,6 +705,7 @@ def create_app(results_dir: str = "results", targets: set[str] | None = None) ->
                     html.Div(
                         className="card chart-card",
                         children=[
+                            html.Div("Loss Rate per Hop", className="card-title"),
                             dcc.Graph(
                                 id="loss-chart",
                                 style={"height": "var(--chart-h)"},

@@ -32,14 +32,14 @@ PLOTLY_LAYOUT = {
         "size": 12,
         "color": "#666",
     },
-    "margin": {"l": 50, "r": 20, "t": 50, "b": 40},
+    "margin": {"l": 50, "r": 20, "t": 20, "b": 40},
     "uirevision": "batchroute",
     "legend": {
         "orientation": "h",
         "yanchor": "bottom",
         "y": 1.02,
-        "xanchor": "right",
-        "x": 1.0,
+        "xanchor": "center",
+        "x": 0.5,
         "font": {"size": 10},
     },
     "xaxis": {

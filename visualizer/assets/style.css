@@ -472,6 +472,10 @@ body {
   overflow: hidden;
 }
 
+.chart-card > .card-title {
+  padding: var(--card-pad) var(--card-pad) 0;
+}
+
 @media (max-width: 820px) {
   .charts-grid {
     flex-direction: column;

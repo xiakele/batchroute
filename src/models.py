@@ -16,6 +16,8 @@ class Hop:
     hostname: str | None = None
     rtts: list[float | None] = field(default_factory=list)
     country_code: str | None = None
+    city: str | None = None
+    region: str | None = None
     lat: float | None = None
     lon: float | None = None
     asn_number: int | None = None
@@ -60,6 +62,8 @@ class TracerouteResult:
     cached: bool = False
     resolved_ip: str | None = None
     country_code: str | None = None
+    city: str | None = None
+    region: str | None = None
     lat: float | None = None
     lon: float | None = None
     asn_number: int | None = None
@@ -75,6 +79,8 @@ class TracerouteResult:
             "cached": self.cached,
             "hops": [h.to_dict() for h in self.hops],
             "country_code": self.country_code,
+            "city": self.city,
+            "region": self.region,
             "lat": self.lat,
             "lon": self.lon,
             "asn_number": self.asn_number,
@@ -95,6 +101,8 @@ class TracerouteResult:
             hops=[Hop.from_dict(h) for h in d.get("hops", [])],
             resolved_ip=d.get("resolved_ip"),
             country_code=d.get("country_code"),
+            city=d.get("city"),
+            region=d.get("region"),
             lat=d.get("lat"),
             lon=d.get("lon"),
             asn_number=d.get("asn_number"),

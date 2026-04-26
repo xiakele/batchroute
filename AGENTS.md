@@ -6,7 +6,7 @@
 - Real packet probing needs root on Linux because `scapy` sends raw packets. Use `sudo $(which uv) run batchroute -f <targets-file>` (or `sudo $(which uv) run batchroute <target> …`) for end-to-end prober tests.
 - Standalone visualizer: `uv run python -m visualizer.app --results-dir results/`.
 - Mock data generator (visualizer stress testing): `uv run python scripts/generate_mock_routes.py [--count 100] [--seed N] [--force]`.
-- GeoLite2 DB downloader: `uv run python scripts/download_geolite2.py`. The DB lands in `data/GeoLite2-City.mmdb` (ignored by `.gitignore`).
+- GeoLite2 DB downloader: `uv run python scripts/download_geolite2.py`. Databases land in `data/GeoLite2-City.mmdb` and `data/GeoLite2-ASN.mmdb` (ignored by `.gitignore`).
 
 ## Verification Order
 - `uv run ruff check src/ visualizer/ scripts/`
@@ -22,8 +22,8 @@
 - `src/parser.py` — validates targets as IPs or hostnames; syntactically invalid entries are silently skipped.
 - `src/resolver.py` — forward DNS (`resolve_hostname`) and reverse DNS (`resolve_single_ip`). Both caches are cleared by `clear_cache()`.
 - `src/prober.py` — writes partial JSON updates during probing. `ProbeConfig.resolved_ip` is set for domain targets so scapy sends to the IP while `TracerouteResult.target` keeps the original domain name.
-- `src/geoip.py` — offline GeoLite2 lookup with internal-RFC-1918 detection. Uses `data/GeoLite2-City.mmdb`.
-- `src/models.py` — `TracerouteResult` carries `cached` and `resolved_ip`. `resolved_ip` is serialized between `target` and `destination_reached` in JSON.
+- `src/geoip.py` — offline GeoLite2-City + ASN lookup with internal-RFC-1918 detection. Uses `data/GeoLite2-City.mmdb` and `data/GeoLite2-ASN.mmdb`.
+- `src/models.py` — `TracerouteResult` and `Hop` carry geo fields (`country_code`, `city`, `region`, `lat`, `lon`, `asn_number`, `asn_org`, `is_internal`) plus `cached` and `resolved_ip`. `resolved_ip` is serialized between `target` and `destination_reached` in JSON.
 - `src/output.py` — terminal color helpers and `chown_to_invoking_user()` for sudo-run file ownership fixup.
 - `visualizer/app.py` — Dash app polling `results/` every 2 s.
 - `visualizer/assets/` — CSS and JS files auto-served by Dash. Any `.js` placed here is loaded in the page automatically.

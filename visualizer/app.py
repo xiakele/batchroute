@@ -102,6 +102,8 @@ def _build_graph_elements(
                     "hop_count": current_hops,
                     "resolved_ip": result.resolved_ip,
                     "country_code": result.country_code,
+                    "city": result.city,
+                    "region": result.region,
                     "lat": result.lat,
                     "lon": result.lon,
                     "asn_number": result.asn_number,
@@ -155,6 +157,8 @@ def _build_graph_elements(
                                 "loss_rate": hop.loss_rate,
                                 "ttl": hop.ttl,
                                 "country_code": hop.country_code,
+                                "city": hop.city,
+                                "region": hop.region,
                                 "lat": hop.lat,
                                 "lon": hop.lon,
                                 "asn_number": hop.asn_number,
@@ -482,6 +486,10 @@ def _node_details(data: dict) -> list:
         pairs = [("IP", _ip_detail_widget(data))]
         if data.get("hostname"):
             pairs.append(("Hostname", str(data["hostname"])))
+        city = data.get("city")
+        region = data.get("region")
+        if city or region:
+            pairs.append(("Location", ", ".join(p for p in (city, region) if p)))
         asn = data.get("asn_number")
         org = data.get("asn_org")
         if asn:
@@ -505,6 +513,10 @@ def _node_details(data: dict) -> list:
         pairs = [("IP", _ip_detail_widget(data))]
         if data.get("hostname"):
             pairs.append(("Hostname", str(data["hostname"])))
+        city = data.get("city")
+        region = data.get("region")
+        if city or region:
+            pairs.append(("Location", ", ".join(p for p in (city, region) if p)))
         asn = data.get("asn_number")
         org = data.get("asn_org")
         if asn:

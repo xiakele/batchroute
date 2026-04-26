@@ -32,6 +32,8 @@ _INTERNAL_NETWORKS = [
 @dataclass
 class GeoData:
     country_code: str | None = None
+    city: str | None = None
+    region: str | None = None
     lat: float | None = None
     lon: float | None = None
     asn_number: int | None = None
@@ -118,10 +120,14 @@ def lookup_ip(ip: str) -> GeoData | None:
         with geoip2.database.Reader(str(CITY_DB_PATH)) as reader:
             response = reader.city(ip)
             cc = response.country.iso_code
+            city = response.city.name
+            region = response.subdivisions.most_specific.name
             lat = response.location.latitude
             lon = response.location.longitude
             return GeoData(
                 country_code=cc,
+                city=city,
+                region=region,
                 lat=lat,
                 lon=lon,
                 is_internal=False,

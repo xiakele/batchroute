@@ -173,6 +173,8 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
                 geo = lookup_ip(hop.ip)
                 if geo:
                     hop.country_code = geo.country_code
+                    hop.city = geo.city
+                    hop.region = geo.region
                     hop.lat = geo.lat
                     hop.lon = geo.lon
                     hop.is_internal = geo.is_internal
@@ -198,6 +200,8 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
                 geo = lookup_ip(target_geo_ip)
                 if geo:
                     result.country_code = geo.country_code
+                    result.city = geo.city
+                    result.region = geo.region
                     result.lat = geo.lat
                     result.lon = geo.lon
                     result.is_internal = geo.is_internal

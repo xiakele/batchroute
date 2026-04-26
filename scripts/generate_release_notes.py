@@ -26,8 +26,8 @@ Batch traceroute tool with topology visualization.
 
 ### Platform Notes
 
-- **Linux / macOS:** The binary requires root (or `CAP_NET_RAW`) for raw packet transmission. This is an OS security restriction.
-- **Windows:** Users must install [Npcap](https://npcap.com/) (or WinPcap) beforehand; the driver cannot be bundled.
+- **Linux / macOS:** The binary requires root (or `CAP_NET_RAW`) for raw packet transmission.
+- **Windows:** Please install [Npcap](https://npcap.com/) (or WinPcap) beforehand, or have [Wireshark](https://www.wireshark.org/) installed.
 
 ### Quick Start
 

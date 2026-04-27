@@ -77,8 +77,8 @@ def _build_graph_elements(
     for result in results:
         target_id = result.target
         resolved_ip = getattr(result, "resolved_ip", None) or None
+        max_ttl = max((h.ttl for h in result.hops), default=0)
         if target_id not in nodes:
-            max_ttl = max((h.ttl for h in result.hops), default=0)
             current_hops = len(set(h.ttl for h in result.hops))
             label = _node_label(result.target, resolved_ip)
             if not result.probing_complete and max_ttl > 0:
@@ -132,7 +132,10 @@ def _build_graph_elements(
             node_paths.setdefault(target_id, set()).add(path_id)
             prev_id = SOURCE_NODE_ID
             for hop in hops:
-                if hop.ip is None:
+                is_final_missing = (
+                    hop.ip is None and result.destination_reached and hop.ttl == max_ttl
+                )
+                if hop.ip is None and not is_final_missing:
                     node_id = f"*_{result.target}_{hop.ttl}_{proto_name}"
                     if node_id not in nodes:
                         nodes[node_id] = {
@@ -148,7 +151,7 @@ def _build_graph_elements(
                         }
                     node_paths.setdefault(node_id, set()).add(path_id)
                 else:
-                    if hop.ip in target_ips:
+                    if is_final_missing or hop.ip in target_ips:
                         node_id = target_id
                     else:
                         node_id = hop.ip
@@ -206,7 +209,7 @@ def _build_graph_elements(
                             "target": target_id,
                             "protocol": proto_name,
                             "avg_rtt": None,
-                            "loss_rate": 0.0,
+                            "loss_rate": 1.0,
                             "weight": 1,
                         },
                         "classes": "",

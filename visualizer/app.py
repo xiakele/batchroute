@@ -122,6 +122,8 @@ def _build_graph_elements(
         target_ips: set[str] = set()
         if resolved_ip:
             target_ips.add(resolved_ip)
+        else:
+            target_ips.add(target_id)
 
         for proto_name, hops in by_protocol.items():
             if proto_name not in protocols:
@@ -145,30 +147,31 @@ def _build_graph_elements(
                             "classes": "",
                         }
                     node_paths.setdefault(node_id, set()).add(path_id)
-                elif hop.ip in target_ips:
-                    node_id = target_id
                 else:
-                    node_id = hop.ip
-                    if node_id not in nodes:
-                        nodes[node_id] = {
-                            "data": {
-                                "id": node_id,
-                                "label": _node_label(hop.ip, hop.hostname),
-                                "hostname": hop.hostname,
-                                "rtt": hop.avg_rtt if hop.avg_rtt is not None else 0,
-                                "loss_rate": hop.loss_rate,
-                                "ttl": hop.ttl,
-                                "country_code": hop.country_code,
-                                "city": hop.city,
-                                "region": hop.region,
-                                "lat": hop.lat,
-                                "lon": hop.lon,
-                                "asn_number": hop.asn_number,
-                                "asn_org": hop.asn_org,
-                                "is_internal": hop.is_internal,
-                            },
-                            "classes": "",
-                        }
+                    if hop.ip in target_ips:
+                        node_id = target_id
+                    else:
+                        node_id = hop.ip
+                        if node_id not in nodes:
+                            nodes[node_id] = {
+                                "data": {
+                                    "id": node_id,
+                                    "label": _node_label(hop.ip, hop.hostname),
+                                    "hostname": hop.hostname,
+                                    "rtt": hop.avg_rtt if hop.avg_rtt is not None else 0,
+                                    "loss_rate": hop.loss_rate,
+                                    "ttl": hop.ttl,
+                                    "country_code": hop.country_code,
+                                    "city": hop.city,
+                                    "region": hop.region,
+                                    "lat": hop.lat,
+                                    "lon": hop.lon,
+                                    "asn_number": hop.asn_number,
+                                    "asn_org": hop.asn_org,
+                                    "is_internal": hop.is_internal,
+                                },
+                                "classes": "",
+                            }
                     node_paths.setdefault(node_id, set()).add(path_id)
                     node_samples.setdefault(node_id, []).append(hop)
 
@@ -522,6 +525,11 @@ def _node_details(data: dict) -> list:
         if asn:
             pairs.append(("ASN", f"AS{asn} {org or ''}".strip()))
         pairs.append(("Hops", str(data.get("hop_count", "—"))))
+        pairs.append(("Samples", str(data.get("samples", "—"))))
+        rtt = data.get("rtt")
+        pairs.append(("Avg RTT", f"{rtt:.2f} ms" if rtt else "—"))
+        loss = data.get("loss_rate")
+        pairs.append(("Loss", f"{loss * 100:.1f}%" if loss is not None else "—"))
         if data.get("cached"):
             status_text = "Cached"
         elif data.get("probing_complete"):

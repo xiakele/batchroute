@@ -14,7 +14,9 @@
 - `uv run mypy src/ visualizer/ scripts/`
 - Full pre-commit run: `uv run pre-commit run --all-files`
 - There are no automated tests beyond lint / typecheck. For behavior checks, use `uv run batchroute --help` or a manual probe with a small targets file.
-- **Note:** pre-commit runs mypy in an isolated venv with `additional_dependencies: [pandas-stubs, dnspython, types-Flask, geoip2]`. If mypy passes locally but fails in pre-commit, missing stubs in the isolated env are the likely cause.
+- Note: pre-commit runs mypy in an isolated venv with `additional_dependencies: [pandas-stubs, dnspython, types-Flask, geoip2]`. If mypy passes locally but fails in pre-commit, missing stubs in the isolated env are the likely cause.
+- There are real probe results in `results/`. Use them for visualizer testing without needing root / a network.
+- The mock generator writes to `mock_results/` by default.
 
 ## Repo Structure
 - `src/main.py` — sole CLI entrypoint; wires the whole flow.
@@ -30,6 +32,18 @@
 - `visualizer/styles.py` — design tokens, Plotly layout, and Cytoscape stylesheet.
 - `scripts/generate_mock_routes.py` — outputs to `mock_results/` by default.
 - `scripts/build_release.py` — wrapper around PyInstaller that also creates `dist/batchroute-release.tar.gz`.
+
+## Mock Generator Guarantees
+`scripts/generate_mock_routes.py` is the canonical source for visualizer stress-test data. It guarantees these invariants so the visualizer's aggregation logic behaves the same as with real probe results:
+- The last TTL hop uses the **target IP** (for IP targets) or **resolved_ip** (for domain targets).
+- No router IP ever repeats at non-consecutive TTLs (no self-loops).
+- `is_internal` is set only for true RFC-1918 ranges (`10/8`, `172.16/12`, `192.168/16`); shared TEST-NET IPs are not marked internal.
+- All geo/ASN fields (`country_code`, `city`, `region`, `lat`, `lon`, `asn_number`, `asn_org`) are present in every hop dict and at the result top level (all `null` in mocks).
+- `avg_rtt` is **not rounded**; it must match the value `Hop.avg_rtt` recomputes from `rtts` so JSON round-trips correctly.
+
+## Data Model Quirks
+- `Hop.avg_rtt` and `Hop.loss_rate` are **computed properties**, not stored fields. `Hop.from_dict()` ignores the serialized values and recomputes them from `rtts`. Any change to the mock generator or prober must ensure stored `avg_rtt` matches the recomputed value.
+- `resolved_ip` is serialized between `target` and `destination_reached` in JSON **only when non-None**. Real IP-target JSON files do not contain a `resolved_ip` key at all.
 
 ## Caching & Output
 - Targets with a complete result JSON (`probing_complete=True`) in the output directory are reused without re-probing by default.
@@ -53,7 +67,10 @@
 - Click-to-focus: clicking a target node highlights its path by dimming unrelated nodes/edges to 12% opacity. Clicking the same target again or clicking the Source node restores the full view. Driven by a `focused-node` `dcc.Store`.
 - All Cytoscape elements must include an explicit `"classes": ""` key (even when empty) so Dash properly clears dynamic classes like `dimmed` on unfocus.
 - Domain targets display as `"domain.com\n(resolved.ip)"` in the graph. The resolved IP node is merged into the target block, not shown separately.
-- **Dash-cytoscape gotcha:** the `global` prop (used to expose the `cy` instance on `window`) is not supported in the version 1.0.2 Python wrapper. If you need to access the underlying Cytoscape instance from JS, traverse the React fiber from the DOM node or use a standalone JS asset in `visualizer/assets/` instead.
+- Node size scales with sample count, not RTT. Shared routers that appear in more targets are drawn larger.
+- Node/edge metrics are aggregated across all targets (mean RTT, mean loss). The details panel shows a "Samples" count.
+- Missing hops at the maximum TTL are treated as target hops when `destination_reached=True`, so a protocol that times out at the final step still contributes 100% loss to the target node aggregate.
+- Dash-cytoscape gotcha: the `global` prop (used to expose the `cy` instance on `window`) is not supported in the version 1.0.2 Python wrapper. If you need to access the underlying Cytoscape instance from JS, traverse the React fiber from the DOM node or use a standalone JS asset in `visualizer/assets/` instead.
 
 ## Typecheck / Packaging Notes
 - Python target is `>=3.12`.
@@ -68,8 +85,7 @@
 - Spec file: `batchroute.spec` at the repo root. It forces inclusion of `scapy.layers.all`, platform-specific `scapy.arch.*` modules, and collects data files for `dash`, `dash_cytoscape`, `plotly`, `pandas`, and `dns`. Custom `visualizer/assets/` files are also explicitly bundled.
 - Local build: `uv run python scripts/build_release.py` (or `uv run pyinstaller batchroute.spec` directly). Output lands in `dist/batchroute/`; the helper script also creates `dist/batchroute-release.tar.gz`.
 - CI builds: Push a tag like `v0.2.0` (or run the workflow manually) to trigger `.github/workflows/release-build.yml`. It builds on `ubuntu-latest`, `macos-latest`, and `windows-latest`, then uploads platform archives as both artifacts and GitHub Release assets.
-- **Platform caveats:**
-  - **Linux / macOS:** The binary still requires root (or `CAP_NET_RAW`) for raw packet transmission; this is an OS restriction, not a packaging bug.
-  - **Windows:** End users must install **Npcap** (or WinPcap) beforehand; the driver cannot be bundled.
-  - **All platforms:** Bundle size is ~200–400 MB because of Pandas, Plotly, and Scapy.
+- Platform caveats:
+  - Linux / macOS: The binary still requires root (or `CAP_NET_RAW`) for raw packet transmission; this is an OS restriction, not a packaging bug.
+  - Windows: End users must install Npcap (or WinPcap) beforehand; the driver cannot be bundled.
 - Smoke-test a fresh build with `./dist/batchroute/batchroute --help` and a quick probe (`--no-viz`) before publishing.

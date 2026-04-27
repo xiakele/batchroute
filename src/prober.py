@@ -422,6 +422,25 @@ def _apply_geo_to_hop(hop: Hop) -> None:
         hop.asn_org = asn.asn_org
 
 
+def _apply_geo_to_target(result: TracerouteResult, target_geo_ip: str) -> None:
+    try:
+        ipaddress.ip_address(target_geo_ip)
+        geo = lookup_ip(target_geo_ip)
+        if geo:
+            result.country_code = geo.country_code
+            result.city = geo.city
+            result.region = geo.region
+            result.lat = geo.lat
+            result.lon = geo.lon
+            result.is_internal = geo.is_internal
+        asn = lookup_asn(target_geo_ip)
+        if asn:
+            result.asn_number = asn.asn_number
+            result.asn_org = asn.asn_org
+    except ValueError:
+        pass
+
+
 def _write_partial_result(
     result: TracerouteResult,
     output_path: Path | None,
@@ -437,6 +456,7 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
     result = TracerouteResult(target=config.target, resolved_ip=config.resolved_ip)
     dst = _probe_dst(config)
     destination_reached = False
+    reached_ttl: int | None = None
 
     listener = _get_global_listener()
     events: queue.Queue[ProbeEvent] = queue.Queue()
@@ -444,6 +464,10 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
     accumulators: dict[tuple[int, Protocol], _HopAccumulator] = {}
 
     max_inflight = max(1, config.max_inflight)
+    if config.geo:
+        target_geo_ip = config.resolved_ip or config.target
+        if target_geo_ip:
+            _apply_geo_to_target(result, target_geo_ip)
 
     def _ensure_accumulator(ttl: int, protocol: Protocol) -> _HopAccumulator:
         key = (ttl, protocol)
@@ -454,15 +478,34 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
             )
         return accumulators[key]
 
+    def _prune_after_reached_ttl() -> None:
+        if reached_ttl is None:
+            return
+        stale_keys = [k for k in in_flight if k.ttl > reached_ttl]
+        for key in stale_keys:
+            listener.unregister(key)
+            in_flight.pop(key, None)
+
+        stale_accumulators = [acc_key for acc_key in accumulators if acc_key[0] > reached_ttl]
+        for acc_key in stale_accumulators:
+            accumulators.pop(acc_key, None)
+
     def _apply_event(event: ProbeEvent) -> None:
-        nonlocal destination_reached
+        nonlocal destination_reached, reached_ttl
+        if reached_ttl is not None and event.key.ttl > reached_ttl:
+            return
         acc = _ensure_accumulator(event.key.ttl, event.key.protocol)
         if 0 <= event.key.query_index < len(acc.rtts):
             acc.rtts[event.key.query_index] = event.rtt_ms
         if event.responder_ip is not None:
             acc.hop.ip = event.responder_ip
+            if config.geo:
+                _apply_geo_to_hop(acc.hop)
         if not event.timed_out and _is_destination_reached(event.response, event.key.protocol, dst):
             destination_reached = True
+            if reached_ttl is None:
+                reached_ttl = event.key.ttl
+            _prune_after_reached_ttl()
 
     def _drain_events(block_timeout: float = 0.0) -> bool:
         got_event = False
@@ -523,11 +566,20 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
             break
 
         for protocol in config.protocols:
+            if destination_reached:
+                break
             _ensure_accumulator(ttl, protocol)
             for query_index in range(config.queries):
-                while len(in_flight) >= max_inflight:
+                _drain_events(block_timeout=0.0)
+                _expire_timeouts()
+                if destination_reached:
+                    break
+
+                while len(in_flight) >= max_inflight and not destination_reached:
                     if not _drain_events(block_timeout=0.02):
                         _expire_timeouts()
+                if destination_reached:
+                    break
 
                 probe, key = _build_probe(
                     dst=dst,
@@ -552,6 +604,8 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
 
                 _drain_events(block_timeout=0.0)
                 _expire_timeouts()
+                if destination_reached:
+                    break
 
                 if config.wait > 0:
                     time.sleep(config.wait)
@@ -564,32 +618,8 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
 
     result.hops = _materialize_hops(accumulators, config.protocols)
 
-    if config.geo:
-        for hop in result.hops:
-            _apply_geo_to_hop(hop)
-
     result.destination_reached = destination_reached
     result.probing_complete = True
-
-    if config.geo:
-        target_geo_ip = config.resolved_ip or config.target
-        if target_geo_ip:
-            try:
-                ipaddress.ip_address(target_geo_ip)
-                geo = lookup_ip(target_geo_ip)
-                if geo:
-                    result.country_code = geo.country_code
-                    result.city = geo.city
-                    result.region = geo.region
-                    result.lat = geo.lat
-                    result.lon = geo.lon
-                    result.is_internal = geo.is_internal
-                asn = lookup_asn(target_geo_ip)
-                if asn:
-                    result.asn_number = asn.asn_number
-                    result.asn_org = asn.asn_org
-            except ValueError:
-                pass
 
     _write_partial_result(result, config.output_path)
     return result

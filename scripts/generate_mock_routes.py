@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import random
 import sys
@@ -174,6 +175,19 @@ def _random_hostname(rng: random.Random) -> str:
     )
 
 
+def _is_rfc1918(ip: str | None) -> bool:
+    if ip is None:
+        return False
+    try:
+        addr = ipaddress.ip_address(ip)
+        return any(
+            addr in ipaddress.ip_network(net)
+            for net in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+        )
+    except ValueError:
+        return False
+
+
 def _generate_domain_target(rng: random.Random) -> str:
     prefix = rng.choice(DOMAIN_PREFIXES)
     if rng.random() < 0.3:
@@ -198,6 +212,7 @@ def _generate_hops(
 
     per_ttl_ip: dict[int, str | None] = {}
     per_ttl_hostname: dict[int, str | None] = {}
+    last_ip: str | None = None
 
     for ttl in range(1, max_ttl + 1):
         is_dest = ttl == max_ttl and destination_reached
@@ -207,8 +222,14 @@ def _generate_hops(
             per_ttl_ip[ttl] = dest_ip
             per_ttl_hostname[ttl] = None
         elif is_shared:
-            idx = rng.randint(0, len(SHARED_GATEWAYS) - 1)
-            gw_ip, gw_hostname = SHARED_GATEWAYS[idx]
+            candidates = [
+                (gw_ip, gw_hostname)
+                for gw_ip, gw_hostname in SHARED_GATEWAYS
+                if gw_ip != last_ip and gw_ip != dest_ip
+            ]
+            if not candidates:
+                candidates = SHARED_GATEWAYS
+            gw_ip, gw_hostname = rng.choice(candidates)
             per_ttl_ip[ttl] = gw_ip
             per_ttl_hostname[ttl] = gw_hostname
         else:
@@ -217,8 +238,14 @@ def _generate_hops(
                 per_ttl_ip[ttl] = None
                 per_ttl_hostname[ttl] = None
             else:
-                per_ttl_ip[ttl] = _random_ip(rng)
+                ip = _random_ip(rng)
+                while ip == last_ip or ip == dest_ip:
+                    ip = _random_ip(rng)
+                per_ttl_ip[ttl] = ip
                 per_ttl_hostname[ttl] = _random_hostname(rng) if rng.random() < 0.4 else None
+
+        if per_ttl_ip[ttl] is not None:
+            last_ip = per_ttl_ip[ttl]
 
     for ttl in range(1, max_ttl + 1):
         is_dest = ttl == max_ttl and destination_reached
@@ -226,16 +253,16 @@ def _generate_hops(
         base_hostname = per_ttl_hostname[ttl]
 
         for protocol in protocols:
-            ip: str | None = base_ip
-            hostname: str | None = base_hostname
+            hop_ip: str | None = base_ip
+            hop_hostname: str | None = base_hostname
 
-            if ip is not None and not is_dest:
+            if hop_ip is not None and not is_dest:
                 if rng.random() < 0.06:
-                    ip = None
-                    hostname = None
+                    hop_ip = None
+                    hop_hostname = None
 
-            if ip is not None and hostname is None and rng.random() < 0.25:
-                hostname = _random_hostname(rng)
+            if hop_ip is not None and hop_hostname is None and rng.random() < 0.25:
+                hop_hostname = _random_hostname(rng)
 
             base_rtt = 1.0 + ttl * rng.uniform(1.8, 3.5)
             if protocol == "tcp":
@@ -243,7 +270,7 @@ def _generate_hops(
 
             rtts: list[float | None] = []
             for q in range(3):
-                if ip is None:
+                if hop_ip is None:
                     rtts.append(None)
                 elif rng.random() < 0.07:
                     rtts.append(None)
@@ -252,18 +279,27 @@ def _generate_hops(
                     rtts.append(max(0.1, round(base_rtt + jitter, 3)))
 
             values = [r for r in rtts if r is not None]
-            avg_rtt = round(sum(values) / len(values), 3) if values else None
+            avg_rtt = sum(values) / len(values) if values else None
             loss_rate = sum(1 for r in rtts if r is None) / len(rtts)
+            is_internal = _is_rfc1918(hop_ip)
 
             hops.append(
                 {
                     "ttl": ttl,
                     "protocol": protocol,
-                    "ip": ip,
-                    "hostname": hostname,
+                    "ip": hop_ip,
+                    "hostname": hop_hostname,
                     "rtts": rtts,
                     "avg_rtt": avg_rtt,
                     "loss_rate": loss_rate,
+                    "country_code": None,
+                    "city": None,
+                    "region": None,
+                    "lat": None,
+                    "lon": None,
+                    "asn_number": None,
+                    "asn_org": None,
+                    "is_internal": is_internal,
                 }
             )
 
@@ -279,7 +315,7 @@ def generate_route(
     destination_reached = rng.random() < 0.8
     shared_hop_count = rng.randint(1, 3)
 
-    dest_ip = resolved_ip if resolved_ip else _random_ip(rng)
+    dest_ip = resolved_ip if resolved_ip else target
 
     hops = _generate_hops(rng, max_ttl, destination_reached, dest_ip, shared_hop_count)
 
@@ -289,6 +325,14 @@ def generate_route(
         "probing_complete": True,
         "cached": False,
         "hops": hops,
+        "country_code": None,
+        "city": None,
+        "region": None,
+        "lat": None,
+        "lon": None,
+        "asn_number": None,
+        "asn_org": None,
+        "is_internal": _is_rfc1918(dest_ip),
     }
     if resolved_ip is not None:
         result["resolved_ip"] = resolved_ip

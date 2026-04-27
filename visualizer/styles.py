@@ -76,10 +76,10 @@ def cytoscape_stylesheet() -> list[dict]:
             },
         },
         {
-            "selector": "node[rtt]",
+            "selector": "node[samples]",
             "style": {
-                "width": "mapData(rtt, 0, 200, 30, 75)",
-                "height": "mapData(rtt, 0, 200, 30, 75)",
+                "width": "mapData(samples, 1, 50, 30, 75)",
+                "height": "mapData(samples, 1, 50, 30, 75)",
             },
         },
         {

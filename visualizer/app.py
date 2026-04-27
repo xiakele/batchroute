@@ -56,6 +56,8 @@ def _build_graph_elements(
     edges: dict[str, dict] = {}
     node_paths: dict[str, set[str]] = {SOURCE_NODE_ID: set()}
     edge_paths: dict[str, set[str]] = {}
+    node_samples: dict[str, list] = {}
+    edge_samples: dict[str, list] = {}
 
     if protocols is None:
         protocols = set(PROTOCOL_COLORS.keys())
@@ -168,6 +170,7 @@ def _build_graph_elements(
                             "classes": "",
                         }
                     node_paths.setdefault(node_id, set()).add(path_id)
+                    node_samples.setdefault(node_id, []).append(hop)
 
                 edge_id = f"{prev_id}_{node_id}_{proto_name}"
                 if edge_id not in edges:
@@ -186,6 +189,7 @@ def _build_graph_elements(
                         "classes": "",
                     }
                 edge_paths.setdefault(edge_id, set()).add(path_id)
+                edge_samples.setdefault(edge_id, []).append(hop)
 
                 prev_id = node_id
 
@@ -205,6 +209,29 @@ def _build_graph_elements(
                         "classes": "",
                     }
                 edge_paths.setdefault(edge_id, set()).add(path_id)
+
+    for node_id, hops in node_samples.items():
+        rtts = [h.avg_rtt for h in hops if h.avg_rtt is not None]
+        avg_rtt = statistics.mean(rtts) if rtts else None
+        loss_rate = statistics.mean([h.loss_rate for h in hops])
+        ttl_values = sorted({h.ttl for h in hops})
+        if len(ttl_values) == 1:
+            ttl_str = str(ttl_values[0])
+        else:
+            ttl_str = f"{ttl_values[0]}–{ttl_values[-1]}"
+        nodes[node_id]["data"]["rtt"] = avg_rtt if avg_rtt is not None else 0
+        nodes[node_id]["data"]["loss_rate"] = loss_rate
+        nodes[node_id]["data"]["ttl"] = ttl_str
+        nodes[node_id]["data"]["samples"] = len(hops)
+
+    for edge_id, hops in edge_samples.items():
+        rtts = [h.avg_rtt for h in hops if h.avg_rtt is not None]
+        avg_rtt = statistics.mean(rtts) if rtts else None
+        loss_rate = statistics.mean([h.loss_rate for h in hops])
+        edges[edge_id]["data"]["avg_rtt"] = avg_rtt
+        edges[edge_id]["data"]["loss_rate"] = loss_rate
+        edges[edge_id]["data"]["weight"] = max(1, int(avg_rtt or 1))
+        edges[edge_id]["data"]["samples"] = len(hops)
 
     if focused_node:
         focused_paths = node_paths.get(focused_node, set())
@@ -380,11 +407,11 @@ def _build_legend() -> html.Div:
         children=[
             html.Span(
                 className="legend-item",
-                title="Node size scales with average RTT",
+                title="Node size scales with number of samples",
                 children=[
                     html.Span(className="legend-size-sm"),
                     html.Span(className="legend-size-lg"),
-                    html.Span("RTT"),
+                    html.Span("Samples"),
                 ],
             ),
             html.Span(
@@ -523,6 +550,7 @@ def _node_details(data: dict) -> list:
             pairs.append(("ASN", f"AS{asn} {org or ''}".strip()))
         if data.get("ttl") is not None:
             pairs.append(("TTL", str(data["ttl"])))
+        pairs.append(("Samples", str(data.get("samples", "—"))))
         rtt = data.get("rtt")
         pairs.append(("Avg RTT", f"{rtt:.2f} ms" if rtt else "—"))
         loss = data.get("loss_rate")
@@ -538,6 +566,7 @@ def _edge_details(data: dict) -> list:
         ("Protocol", str(data.get("protocol", "?")).upper()),
         ("From", str(data.get("source", "?"))),
         ("To", str(data.get("target", "?"))),
+        ("Samples", str(data.get("samples", "—"))),
         ("Avg RTT", f"{avg_rtt:.2f} ms" if avg_rtt else "—"),
         ("Loss", f"{loss * 100:.1f}%" if loss is not None else "—"),
     ]

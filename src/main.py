@@ -452,30 +452,18 @@ def run(args: argparse.Namespace) -> None:
     if needs_probing:
         _check_probe_privileges()
 
-    if not args.no_viz:
-        _launch_visualizer_background(output_dir, set(targets))
-
-    results: list[TracerouteResult] = list(cached_results)
-
-    # --- Probing phase ---
-    if needs_probing:
-        iface_label = chosen_iface.name if chosen_iface is not None else "default"
-        print(f"\n{heading('Interface')}  {dim(iface_label)}")
-        proto_list = ", ".join(p.value for p in protocols)
-        print(f"\n{heading('Probing')}  {len(targets_to_probe)} target(s)")
-        print(f"  {dim(f'protocols: {proto_list}')}")
-
         if not args.no_geo:
             city_missing = not CITY_DB_PATH.exists()
             asn_missing = not ASN_DB_PATH.exists()
             if city_missing or asn_missing:
+                print(f"\n{heading('Database download')}")
                 downloaded_city = not city_missing
                 downloaded_asn = not asn_missing
                 if sys.stdin.isatty():
                     if city_missing and asn_missing:
                         try:
                             answer = (
-                                input("  GeoLite2 databases not found. Download now? [y/N] ")
+                                input("  GeoLite2 databases not found. \n  Download now? [y/N] ")
                                 .strip()
                                 .lower()
                             )
@@ -488,7 +476,9 @@ def run(args: argparse.Namespace) -> None:
                     elif city_missing:
                         try:
                             answer = (
-                                input("  GeoLite2-City database not found. Download now? [y/N] ")
+                                input(
+                                    "  GeoLite2-City database not found. \n  Download now? [y/N] "
+                                )
                                 .strip()
                                 .lower()
                             )
@@ -499,7 +489,7 @@ def run(args: argparse.Namespace) -> None:
                     elif asn_missing:
                         try:
                             answer = (
-                                input("  GeoLite2-ASN database not found. Download now? [y/N] ")
+                                input("  GeoLite2-ASN database not found. \n  Download now? [y/N] ")
                                 .strip()
                                 .lower()
                             )
@@ -519,6 +509,19 @@ def run(args: argparse.Namespace) -> None:
                             f"GeoLite2-ASN database not found at {ASN_DB_PATH} — ASN lookup skipped"
                         )
                         print(f"  {warning(msg)}")
+
+    if not args.no_viz:
+        _launch_visualizer_background(output_dir, set(targets))
+
+    results: list[TracerouteResult] = list(cached_results)
+
+    # --- Probing phase ---
+    if needs_probing:
+        iface_label = chosen_iface.name if chosen_iface is not None else "default"
+        print(f"\n{heading('Interface')}  {dim(iface_label)}")
+        proto_list = ", ".join(p.value for p in protocols)
+        print(f"\n{heading('Probing')}  {len(targets_to_probe)} target(s)")
+        print(f"  {dim(f'protocols: {proto_list}')}")
 
         for t in targets_to_probe:
             ip = resolved_ips.get(t)

@@ -19,12 +19,12 @@ from scapy.sendrecv import AsyncSniffer, send
 
 from src.config import (
     ALL_PROTOCOLS,
-    DEFAULT_MAX_INFLIGHT,
     DEFAULT_MAX_TTL,
     DEFAULT_MIN_TTL,
     DEFAULT_PACKET_SIZE,
     DEFAULT_PORT,
     DEFAULT_QUERIES,
+    DEFAULT_SIM_QUERIES,
     DEFAULT_TIMEOUT,
     DEFAULT_WAIT,
     Protocol,
@@ -76,7 +76,7 @@ class ProbeConfig:
     timeout: float = DEFAULT_TIMEOUT
     wait: float = DEFAULT_WAIT
     packet_size: int = DEFAULT_PACKET_SIZE
-    max_inflight: int = DEFAULT_MAX_INFLIGHT
+    max_inflight: int = DEFAULT_SIM_QUERIES
     protocols: list[Protocol] = field(default_factory=lambda: list(ALL_PROTOCOLS))
     output_path: Path | None = None
     resolved_ip: str | None = None

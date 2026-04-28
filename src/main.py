@@ -15,13 +15,13 @@ from scapy.config import conf as scapy_conf
 
 from src.config import (
     ALL_PROTOCOLS,
-    DEFAULT_MAX_INFLIGHT,
     DEFAULT_MAX_TTL,
     DEFAULT_MIN_TTL,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_PACKET_SIZE,
     DEFAULT_PORT,
     DEFAULT_QUERIES,
+    DEFAULT_SIM_QUERIES,
     DEFAULT_TIMEOUT,
     DEFAULT_WAIT,
     Protocol,
@@ -113,12 +113,13 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Timeout in seconds per probe response (default: {DEFAULT_TIMEOUT}).",
     )
     p.add_argument(
-        "--max-inflight",
+        "-N",
+        "--sim-queries",
         type=int,
-        default=DEFAULT_MAX_INFLIGHT,
+        default=DEFAULT_SIM_QUERIES,
         help=(
-            "Maximum number of in-flight probes per target before backpressure"
-            f" (default: {DEFAULT_MAX_INFLIGHT})."
+            "Number of probe packets sent out simultaneously per target"
+            f" (default: {DEFAULT_SIM_QUERIES})."
         ),
     )
     p.add_argument(
@@ -538,7 +539,7 @@ def run(args: argparse.Namespace) -> None:
                 timeout=args.timeout,
                 wait=args.wait,
                 packet_size=args.size,
-                max_inflight=args.max_inflight,
+                max_inflight=args.sim_queries,
                 protocols=protocols,
                 output_path=output_dir / f"{t}.json",
                 resolved_ip=resolved_ips.get(t),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import ipaddress
 import itertools
 import platform
@@ -168,6 +169,16 @@ class _GlobalProbeListener:
             )
             self._sniffer.start()
 
+    def stop(self) -> None:
+        with self._lock:
+            if self._sniffer is None:
+                return
+            try:
+                self._sniffer.stop()
+            except Exception:
+                pass
+            self._sniffer = None
+
     def register(self, record: ProbeRecord) -> None:
         with self._lock:
             self._inflight[record.key] = record
@@ -301,6 +312,17 @@ def _get_global_listener() -> _GlobalProbeListener:
             _global_listener = _GlobalProbeListener()
         _global_listener.ensure_started()
         return _global_listener
+
+
+def stop_global_listener() -> None:
+    global _global_listener
+    with _global_listener_lock:
+        if _global_listener is not None:
+            _global_listener.stop()
+            _global_listener = None
+
+
+atexit.register(stop_global_listener)
 
 
 def _payload_size(total_size: int) -> int:

@@ -40,7 +40,7 @@ from src.output import (
     warning,
 )
 from src.parser import is_valid_target, parse_targets
-from src.prober import ProbeConfig, trace_single_target
+from src.prober import ProbeConfig, stop_global_listener, trace_single_target
 from src.resolver import clear_cache, resolve_hostname, resolve_result
 
 
@@ -539,7 +539,7 @@ def run(args: argparse.Namespace) -> None:
                 wait=args.wait,
                 packet_size=args.size,
                 max_inflight=args.max_inflight,
-                    protocols=protocols,
+                protocols=protocols,
                 output_path=output_dir / f"{t}.json",
                 resolved_ip=resolved_ips.get(t),
                 geo=not args.no_geo,
@@ -569,6 +569,8 @@ def run(args: argparse.Namespace) -> None:
                 dest_label = green("reached") if result.destination_reached else red("not reached")
                 unique_hops = len({h.ttl for h in result.hops})
                 print(f"  {target} — {unique_hops} hop(s), destination {dest_label}")
+
+        stop_global_listener()
 
     # --- Summary ---
     clear_cache()

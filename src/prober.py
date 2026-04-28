@@ -213,26 +213,33 @@ class _GlobalProbeListener:
             self._icmp_index.pop((key.dst_ip, key.icmp_id, key.icmp_seq), None)
 
     def _handle_packet(self, packet: Any) -> None:
-        matched_key, responder_ip = self._match_key(packet)
-        if matched_key is None:
-            return
-
-        with self._lock:
-            record = self._inflight.pop(matched_key, None)
-            if record is None:
+        try:
+            matched_key, responder_ip = self._match_key(packet)
+            if matched_key is None:
                 return
-            self._remove_index_for_key(matched_key)
 
-        rtt_ms = (time.time() - record.sent_ts) * 1000
-        record.event_queue.put(
-            ProbeEvent(
-                key=record.key,
-                responder_ip=responder_ip,
-                rtt_ms=rtt_ms,
-                response=packet,
-                timed_out=False,
+            with self._lock:
+                record = self._inflight.pop(matched_key, None)
+                if record is None:
+                    return
+                self._remove_index_for_key(matched_key)
+
+            pkt_ts = getattr(packet, "time", None)
+            if pkt_ts is not None:
+                rtt_ms = (float(pkt_ts) - record.sent_ts) * 1000
+            else:
+                rtt_ms = (time.time() - record.sent_ts) * 1000
+            record.event_queue.put(
+                ProbeEvent(
+                    key=record.key,
+                    responder_ip=responder_ip,
+                    rtt_ms=rtt_ms,
+                    response=packet,
+                    timed_out=False,
+                )
             )
-        )
+        except Exception:
+            return
 
     def _match_key(self, packet: Any) -> tuple[ProbeKey | None, str | None]:
         if packet is None or IP not in packet:
@@ -567,9 +574,11 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
         expired = [key for key, deadline in in_flight.items() if deadline <= now]
         for key in expired:
             record = listener.unregister(key)
-            in_flight.pop(key, None)
             if record is None:
+                # Response may be in transit from the sniffer thread;
+                # leave in_flight intact so _drain_events can process it.
                 continue
+            in_flight.pop(key, None)
             _apply_event(
                 ProbeEvent(
                     key=key,
@@ -588,20 +597,15 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
             break
 
         for protocol in config.protocols:
-            if destination_reached:
-                break
             _ensure_accumulator(ttl, protocol)
             for query_index in range(config.queries):
                 _drain_events(block_timeout=0.0)
                 _expire_timeouts()
-                if destination_reached:
-                    break
 
-                while len(in_flight) >= max_inflight and not destination_reached:
+                while len(in_flight) >= max_inflight:
                     if not _drain_events(block_timeout=0.02):
                         _expire_timeouts()
-                if destination_reached:
-                    break
+                        _drain_events(block_timeout=0.0)
 
                 probe, key = _build_probe(
                     dst=dst,
@@ -626,17 +630,16 @@ def trace_single_target(config: ProbeConfig) -> TracerouteResult:
 
                 _drain_events(block_timeout=0.0)
                 _expire_timeouts()
-                if destination_reached:
-                    break
 
-                if config.wait > 0:
-                    time.sleep(config.wait)
+                sleep_time = config.wait if config.wait > 0 else 0.005
+                time.sleep(sleep_time)
 
     while in_flight:
         next_deadline = min(in_flight.values())
         wait_s = max(0.0, min(0.05, next_deadline - time.time()))
         if not _drain_events(block_timeout=wait_s):
             _expire_timeouts()
+            _drain_events(block_timeout=0.0)
 
     result.hops = _materialize_hops(accumulators, config.protocols)
 

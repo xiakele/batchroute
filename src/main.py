@@ -15,6 +15,7 @@ from scapy.config import conf as scapy_conf
 
 from src.config import (
     ALL_PROTOCOLS,
+    DEFAULT_MAX_INFLIGHT,
     DEFAULT_MAX_TTL,
     DEFAULT_MIN_TTL,
     DEFAULT_OUTPUT_DIR,
@@ -39,7 +40,7 @@ from src.output import (
     warning,
 )
 from src.parser import is_valid_target, parse_targets
-from src.prober import ProbeConfig, trace_single_target
+from src.prober import ProbeConfig, stop_global_listener, trace_single_target
 from src.resolver import clear_cache, resolve_hostname, resolve_result
 
 
@@ -110,6 +111,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_TIMEOUT,
         help=f"Timeout in seconds per probe response (default: {DEFAULT_TIMEOUT}).",
+    )
+    p.add_argument(
+        "--max-inflight",
+        type=int,
+        default=DEFAULT_MAX_INFLIGHT,
+        help=(
+            "Maximum number of in-flight probes per target before backpressure"
+            f" (default: {DEFAULT_MAX_INFLIGHT})."
+        ),
     )
     p.add_argument(
         "-n",
@@ -528,6 +538,7 @@ def run(args: argparse.Namespace) -> None:
                 timeout=args.timeout,
                 wait=args.wait,
                 packet_size=args.size,
+                max_inflight=args.max_inflight,
                 protocols=protocols,
                 output_path=output_dir / f"{t}.json",
                 resolved_ip=resolved_ips.get(t),
@@ -558,6 +569,8 @@ def run(args: argparse.Namespace) -> None:
                 dest_label = green("reached") if result.destination_reached else red("not reached")
                 unique_hops = len({h.ttl for h in result.hops})
                 print(f"  {target} — {unique_hops} hop(s), destination {dest_label}")
+
+        stop_global_listener()
 
     # --- Summary ---
     clear_cache()

@@ -23,7 +23,7 @@
 - `src/config.py` — constants and the `Protocol` enum (`udp`, `tcp`, `icmp`).
 - `src/parser.py` — validates targets as IPs or hostnames; syntactically invalid entries are silently skipped.
 - `src/resolver.py` — forward DNS (`resolve_hostname`) and reverse DNS (`resolve_single_ip`). Both caches are cleared by `clear_cache()`.
-- `src/prober.py` — writes partial JSON updates during probing. `ProbeConfig.resolved_ip` is set for domain targets so scapy sends to the IP while `TracerouteResult.target` keeps the original domain name.
+- `src/prober.py` — batched async packet engine. Uses a global `AsyncSniffer` (`_GlobalProbeListener`) plus fire-and-forget `send()` instead of blocking `sr1()`. Each probe gets a unique identifier (UDP/TCP source port or ICMP id+seq) so ICMP error responses can be matched back to the original probe. `ProbeConfig.resolved_ip` is set for domain targets so scapy sends to the IP while `TracerouteResult.target` keeps the original domain name.
 - `src/geoip.py` — offline GeoLite2-City + ASN lookup with internal-RFC-1918 detection. Uses `data/GeoLite2-City.mmdb` and `data/GeoLite2-ASN.mmdb`.
 - `src/models.py` — `TracerouteResult` and `Hop` carry geo fields (`country_code`, `city`, `region`, `lat`, `lon`, `asn_number`, `asn_org`, `is_internal`) plus `cached` and `resolved_ip`. `resolved_ip` is serialized between `target` and `destination_reached` in JSON.
 - `src/output.py` — terminal color helpers and `chown_to_invoking_user()` for sudo-run file ownership fixup.
@@ -61,6 +61,11 @@
 - Default probing sends UDP, TCP SYN, and ICMP for each TTL step unless `-P` restricts the protocol.
 - Use `--no-geo` to skip GeoIP lookup entirely (no `data/` directory access, no download prompt).
 - Scapy sends packets via the interface associated with the default route (`0.0.0.0`). Use `--iface <name>` to override, or `--list-interfaces` to see available adapters.
+- Batch probing: Probes are sent with `send()` and responses are captured by a global `AsyncSniffer` (`_GlobalProbeListener`) rather than blocking `sr1()`. Each probe carries a unique identifier (UDP/TCP source port or ICMP id+seq) so ICMP errors can be matched back to the original probe.
+- Per-TTL protocol completeness: `destination_reached` is only checked at the start of the next TTL iteration, not between protocols within the same TTL. All protocols always get their full query count for the current TTL.
+- Concurrency control: `-N` / `--sim-queries` sets the max in-flight probes per target (default 32, matching traceroute `-N`). Backpressure pauses sending until room opens up.
+- Timing defaults: `DEFAULT_TIMEOUT = 3.0` s, `DEFAULT_WAIT = 0.005` s. Even when `-z 0` is passed, a 5 ms minimum gap is enforced between consecutive probes to avoid zero-spacing bursts that trigger target-side rate limiting.
+- Graceful shutdown: `stop_global_listener()` is called after all targets finish probing to tear down the global sniffer. An `atexit` handler also registers it.
 
 ## Visualizer Interactivity
 - Protocol checkboxes in the legend filter which protocol paths appear in the graph and charts.

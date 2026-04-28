@@ -19,10 +19,10 @@ Batch traceroute tool with topology visualization.
 
 | Platform | Architecture | Archive |
 |----------|--------------|---------|
-| Linux | x86_64 | [batchroute-{tag}-linux-x86_64.tar.gz]({url_base}/batchroute-{version}-linux-x86_64.tar.gz) |
-| macOS | ARM64 | [batchroute-{tag}-macos-arm64.tar.gz]({url_base}/batchroute-{version}-macos-arm64.tar.gz) |
-| macOS | Intel (x86_64) | [batchroute-{tag}-macos-x86_64.tar.gz]({url_base}/batchroute-{version}-macos-x86_64.tar.gz) |
-| Windows | x86_64 | [batchroute-{tag}-windows-x86_64.zip]({url_base}/batchroute-{version}-windows-x86_64.zip) |
+| Linux | x86_64 | [batchroute-{version}-linux-x86_64.tar.gz]({url_base}/batchroute-{version}-linux-x86_64.tar.gz) |
+| macOS | ARM64 | [batchroute-{version}-macos-arm64.tar.gz]({url_base}/batchroute-{version}-macos-arm64.tar.gz) |
+| macOS | Intel (x86_64) | [batchroute-{version}-macos-x86_64.tar.gz]({url_base}/batchroute-{version}-macos-x86_64.tar.gz) |
+| Windows | x86_64 | [batchroute-{version}-windows-x86_64.zip]({url_base}/batchroute-{version}-windows-x86_64.zip) |
 
 ### Platform Notes
 

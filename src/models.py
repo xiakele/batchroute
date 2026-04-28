@@ -117,6 +117,17 @@ class TracerouteResult:
         with open(path, "w") as f:
             json.dump(self.to_dict(), f, indent=2)
 
+    def to_text(self, path: Path) -> None:
+        from src.text_format import format_traceroute_text
+
+        text = format_traceroute_text(self)
+        if not path.parent.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            chown_to_invoking_user(path.parent)
+        with open(path, "w") as f:
+            f.write(text)
+        chown_to_invoking_user(path)
+
     @classmethod
     def from_json(cls, path: Path) -> TracerouteResult:
         with open(path) as f:

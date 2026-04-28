@@ -384,6 +384,9 @@ def run(args: argparse.Namespace) -> None:
             p = output_dir / f"{t}.json"
             if p.exists():
                 p.unlink()
+            txt_p = output_dir / f"{t}.txt"
+            if txt_p.exists():
+                txt_p.unlink()
         (output_dir / ".targets").unlink(missing_ok=True)
     else:
         existing = list(output_dir.glob("*.json")) if output_dir.exists() else []
@@ -410,6 +413,10 @@ def run(args: argparse.Namespace) -> None:
                     if result.probing_complete:
                         result.cached = True
                         result.to_json(result_path)
+                        text_path = output_dir / f"{t}.txt"
+                        if not text_path.exists():
+                            result.to_text(text_path)
+                            chown_to_invoking_user(text_path)
                         cached_results.append(result)
                         continue
                 except Exception:
@@ -568,6 +575,9 @@ def run(args: argparse.Namespace) -> None:
                     resolve_result(result)
                     result.to_json(output_dir / f"{target}.json")
                     chown_to_invoking_user(output_dir / f"{target}.json")
+
+                result.to_text(output_dir / f"{target}.txt")
+                chown_to_invoking_user(output_dir / f"{target}.txt")
 
                 results.append(result)
                 dest_label = green("reached") if result.destination_reached else red("not reached")

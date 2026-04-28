@@ -21,7 +21,7 @@
 ## Repo Structure
 - `src/main.py` — sole CLI entrypoint; wires the whole flow.
 - `src/config.py` — constants and the `Protocol` enum (`udp`, `tcp`, `icmp`).
-- `src/parser.py` — validates targets as IPs or hostnames; syntactically invalid entries are silently skipped.
+- `src/parser.py` — validates targets as IPs or hostnames; syntactically invalid entries are skipped with a warning.
 - `src/resolver.py` — forward DNS (`resolve_hostname`) and reverse DNS (`resolve_single_ip`). Both caches are cleared by `clear_cache()`.
 - `src/prober.py` — batched async packet engine. Uses a global `AsyncSniffer` (`_GlobalProbeListener`) plus fire-and-forget `send()` instead of blocking `sr1()`. Each probe gets a unique identifier (UDP/TCP source port or ICMP id+seq) so ICMP error responses can be matched back to the original probe. `ProbeConfig.resolved_ip` is set for domain targets so scapy sends to the IP while `TracerouteResult.target` keeps the original domain name.
 - `src/geoip.py` — offline GeoLite2-City + ASN lookup with internal-RFC-1918 detection. Uses `data/GeoLite2-City.mmdb` and `data/GeoLite2-ASN.mmdb`.
@@ -69,7 +69,7 @@
 
 ## Visualizer Interactivity
 - Protocol checkboxes in the legend filter which protocol paths appear in the graph and charts.
-- Click-to-focus: clicking a target node highlights its path by dimming unrelated nodes/edges to 12% opacity. Clicking the same target again or clicking the Source node restores the full view. Driven by a `focused-node` `dcc.Store`.
+- Click-to-focus: Clicking on a node highlights the routes through that node by dimming unrelated nodes/edges to 12% opacity. Clicking the same node again or clicking the Source node restores the full view. Driven by a `focused-node` `dcc.Store`.
 - All Cytoscape elements must include an explicit `"classes": ""` key (even when empty) so Dash properly clears dynamic classes like `dimmed` on unfocus.
 - Domain targets display as `"domain.com\n(resolved.ip)"` in the graph. The resolved IP node is merged into the target block, not shown separately.
 - Node size scales with sample count, not RTT. Shared routers that appear in more targets are drawn larger.

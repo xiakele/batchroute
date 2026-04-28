@@ -1,168 +1,168 @@
-# HOWTO — Install and Run batchroute
+# How to Use batchroute
 
-## Requirements
+## Quick Start with a Pre-Built Binary
 
-- **Python** >= 3.12
-- **uv** (recommended) or `pip` with a virtual environment
-- **Root / Administrator privileges** when performing real packet probes, because scapy sends raw packets
-  - Linux: run with `sudo`
-  - macOS: run with `sudo`
-  - Windows: run as Administrator
+The easiest way to run **batchroute** is to download a pre-built binary from [GitHub Releases](https://github.com/xiakele/batchroute/releases).
 
-## 1. Install Dependencies
+1. Download the archive that matches your operating system.
+2. Extract it with an archive manager, or use the following commands:
+   ```bash
+   # Linux / macOS
+   tar -xzf batchroute-*.tar.gz
+   cd batchroute/
 
-The project uses `pyproject.toml` and `uv` for dependency management.
+   # Windows (PowerShell)
+   Expand-Archive batchroute-*.zip -DestinationPath batchroute
+   cd batchroute
+   ```
+3. Run the tool inside its directory:
+   ```bash
+   # Linux / macOS — use sudo
+   sudo ./batchroute 1.1.1.1 google.com
 
+   # Windows — run PowerShell / CMD as Administrator
+   .\batchroute.exe 1.1.1.1 google.com
+   ```
+
+### Platform Notes
+
+| Platform | Requirements |
+|----------|--------------|
+| **Linux / macOS** | `sudo` (raw socket restriction). |
+| **Windows** | Install [Npcap](https://npcap.com/) (or WinPcap) beforehand, or have [Wireshark](https://www.wireshark.org/) installed. |
+
+---
+
+## Basic Usage
+
+### Probe a single target
 ```bash
-# Clone or extract the project, then navigate into it
-cd batchroute
-
-# Sync dependencies (creates .venv automatically)
-uv sync
+sudo ./batchroute 8.8.8.8
 ```
 
-If you prefer plain `pip`:
-
+### Probe multiple targets
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate   # Linux/macOS
-# .venv\Scripts\activate    # Windows
-pip install -e ".[dev]"
+sudo ./batchroute 1.1.1.1 google.com example.com
 ```
 
-## 2. Prepare a Target List
+### Probe from a file
+Create a text file with one target per line (IPs or domains):
 
-Create a plain text file (`targets.txt`) with one IP address or domain per line:
+targets.txt:
 
-```text
+
+```
 1.1.1.1
-8.8.8.8
-example.com
+google.com
 cloudflare.com
 ```
 
-Or use a CSV file (`targets.csv`) where the first column contains the targets:
-
-```csv
-1.1.1.1
-8.8.8.8
-example.com
-```
-
-## 3. Run the Traceroute
-
-### Basic usage (with visualization)
-
-Using an input file:
-
+Then run:
 ```bash
-# Linux — root required for raw packets
-sudo $(which uv) run batchroute -f targets.txt
+sudo ./batchroute -f targets.txt
 ```
 
-Or pass targets directly on the command line:
+CSV files are also supported (first column is read).
 
+---
+
+## Visualizer
+
+By default, after probing starts **batchroute** launches a background Dash server and opens your browser at `http://localhost:8050`.
+
+- **Protocol filtering** — Toggle UDP, TCP, and ICMP paths in the legend.
+- **Click-to-focus** — Click on a node to highlight the routes through that node; click again (or click the Source node) to restore the full graph. The details of the node (IP, Location, Average RTT...) are displayed on the side panel.
+- **Live updates** — The UI polls the output directory every 2 seconds, so new results appear automatically.
+
+To run without the UI:
 ```bash
-sudo $(which uv) run batchroute 1.1.1.1 8.8.8.8 cloudflare.com
+sudo ./batchroute --no-viz -f targets.txt
 ```
 
-On success the CLI will:
-1. Resolve domains.
-2. Launch the visualizer at `http://localhost:8050` and open your browser.
-3. Begin probing in parallel.
-4. Block after probing so the UI stays up. Press `Ctrl+C` to exit.
+---
 
-### Common options
+## Common Options
+
+You can run `./batchroute --help` to view the full options list.
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-f FILE` | Input file (`.txt` or `.csv`) | optional |
 | `-m N` | Maximum TTL | 30 |
-| `-M N` | Minimum / starting TTL | 1 |
-| `-q N` | Probe series (queries) per TTL step | 3 |
-| `-p PORT` | Destination port for UDP/TCP probes | 33434 |
-| `-z SEC` | Wait time between consecutive probes | 0.0 |
-| `--size BYTES` | Total packet size | 60 |
-| `--timeout SEC` | Timeout per probe response | 5.0 |
-| `-n` | Skip reverse-DNS lookups | off |
-| `-P {udp,tcp,icmp}` | Probe only one protocol | all three |
-| `-o DIR` | Output directory for JSON results | `results/` |
-| `-F` | Force re-probe; ignore cached results | off |
-| `-y` | Skip overwrite confirmation when using `-F` | off |
+| `-M N` | Minimum TTL | 1 |
+| `-q N` | Queries per TTL step | 3 |
+| `-p PORT` | Destination port (UDP/TCP) | 33434 |
+| `-z SEC` | Wait between probes | 0.005 s |
+| `--timeout SEC` | Per-probe timeout | 3.0 s |
+| `-N N` | Max in-flight probes per target | 32 |
+| `-P {udp,tcp,icmp}` | Restrict to one protocol | all three |
+| `-o DIR` | Output directory | `results/` |
+| `-F` / `--force` | Re-probe all targets, ignore cache | off |
+| `-y` / `--yes` | Skip confirmation when using `--force` | off |
 | `--no-viz` | Do not launch the visualizer | off |
+| `--no-geo` | Skip GeoIP lookups | off |
+| `--iface NAME` | Network interface to use | default route |
+| `--list-interfaces` | Show available interfaces and exit | — |
 | `-w N` | Parallel worker threads | 4 |
+| `-n` / `--no-dns` | Skip reverse DNS for hops | off |
 
-### Examples
-
-Probe only ICMP, 5 queries per TTL, max TTL 20:
-
+**Example with options:**
 ```bash
-sudo $(which uv) run batchroute -f targets.txt -P icmp -q 5 -m 20
+sudo ./batchroute -m 20 -P icmp -F -y -o ./my_results 8.8.8.8
 ```
 
-Run non-interactively (no browser UI) with a custom output directory:
+---
 
+## Troubleshooting
+
+### "Raw socket access is required"
+You are not running with sufficient privileges.
+- **Linux / macOS:** use `sudo` or grant the binary `CAP_NET_RAW`.
+- **Windows:** right-click your terminal and choose **Run as Administrator**.
+
+### "No connected interface with a default route found"
+The tool could not auto-detect a usable network interface. List them and pick one manually:
 ```bash
-sudo $(which uv) run batchroute -f targets.txt --no-viz -o ./my_results
+sudo ./batchroute --list-interfaces
+sudo ./batchroute --iface eth0 -f targets.txt
 ```
 
-Probe specific targets directly from the command line:
+### GeoIP lookups are missing
+On the first run the tool will prompt you to download the GeoLite2 databases.
+Use `--no-geo` to skip GeoIP entirely.
 
+---
+
+## Development Setup
+
+If you prefer to run from source or contribute, install the development environment:
+
+### Prerequisites
+- Python **≥ 3.12**
+- [`uv`](https://docs.astral.sh/uv/) package manager
+
+### Install dependencies
 ```bash
-sudo $(which uv) run batchroute 1.1.1.1 8.8.8.8 cloudflare.com --no-viz
+uv sync
 ```
 
-Force re-run everything without prompting:
-
+### Run from source
 ```bash
-sudo $(which uv) run batchroute -f targets.txt -F -y
+# General help
+uv run batchroute --help
+
+# Probe with root (Linux)
+sudo $(which uv) run batchroute -f targets.txt
 ```
 
-## 4. View Results in the Visualizer (Standalone)
-
-If you already have JSON results and only want to open the UI:
-
-```bash
-uv run python -m visualizer.app --results-dir results/
-```
-
-Then open `http://localhost:8050` in your browser.
-
-The visualizer reads every `.json` file in the directory and the `.targets` manifest (if present). It polls for changes every 2 seconds, so you can leave it open while a separate probing process is still writing files.
-
-## 5. Generate Mock Data for Testing
-
-If you want to test the visualizer without sending real packets:
-
-```bash
-uv run python scripts/generate_mock_routes.py --count 100 --seed 42
-```
-
-This creates 100 fake routes in `mock_results/`. Launch the visualizer against them:
-
-```bash
-uv run python -m visualizer.app --results-dir mock_results/
-```
-
-## 6. Development / Quality Checks
-
-Run the linting and type-checking pipeline:
-
+### Code quality checks
 ```bash
 uv run ruff check src/ visualizer/ scripts/
 uv run ruff format --check src/ visualizer/ scripts/
 uv run mypy src/ visualizer/ scripts/
-```
-
-Or run the full pre-commit suite:
-
-```bash
 uv run pre-commit run --all-files
 ```
 
-## Troubleshooting
-
-- **Permission denied / raw socket errors**: Make sure you run with `sudo` on Linux/macOS or as Administrator on Windows.
-- **Npcap broadcast warnings on Windows**: The tool pre-seeds the ARP cache automatically; if warnings persist, ensure Npcap is installed and your interface is active.
-- **Visualizer shows “Waiting for probe data…”**: Verify the `--results-dir` path matches where JSON files are being written, and check that the `.targets` manifest exists.
-- **Domain resolution fails**: The tool skips unresolvable domains with a warning. Check your DNS connectivity or use `-n` to disable reverse lookups after probing.
+### Build a release binary locally
+```bash
+uv run python scripts/build_release.py
+```

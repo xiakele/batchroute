@@ -1,6 +1,6 @@
 # batchroute
 
-**batchroute** is a batch traceroute tool with an interactive topology visualizer. It probes multiple targets in parallel, writes per-target JSON results, and launches a Dash-based web UI to explore routes, RTTs, and packet loss.
+**batchroute** is a batch traceroute tool with an interactive topology visualizer. It probes multiple targets in parallel, writes per-target JSON and text results, and launches a Dash-based web UI to explore routes, RTTs, and packet loss.
 
 ## Repository Layout
 
@@ -13,7 +13,8 @@
 │   ├── resolver.py         # Forward / reverse DNS
 │   ├── prober.py           # Async packet engine
 │   ├── geoip.py            # GeoLite2 lookups
-│   ├── models.py           # TracerouteResult & Hop
+│   ├── models.py           # TracerouteResult & Hop Data Structures
+│   ├── text_format.py      # Traceroute-style text formatter
 │   └── output.py           # Terminal colors & file ownership
 ├── visualizer/             # Dash application
 │   ├── app.py              # Web UI & Cytoscape graph
@@ -43,14 +44,16 @@
 
 - **Partial writes** — After every response or timeout, the current hop list is serialized to JSON. This allows the visualizer to show probing progress in real time.
 
-- **Reverse DNS** — After probing completes, hop IP addresses are resolved to hostnames in bulk. Final results are written to the per-target JSON file.
+- **Reverse DNS** — After probing completes, hop IP addresses are resolved to hostnames in bulk. Final results are written to the per-target JSON file and a companion text file in classic traceroute format with per-protocol lines for each TTL.
+
+- **Dual-format output** — Every target produces both a `.json` file (for the visualizer and programmatic use) and a `.txt` file (for human-readable terminal-style review). Missing text files are regenerated automatically when cached JSON is loaded.
 
 ## Visualizer Data Flow
 
 The Dash application polls the `results/` directory every 2 seconds. It reads the `.targets` manifest to know which JSON files belong to the current run, then builds a Cytoscape graph from all matching `TracerouteResult` objects. Nodes and edges are aggregated across protocols to show mean RTT, mean loss rate, and sample counts. Protocol checkboxes filter which paths are rendered, and clicking a target node highlights its path while dimming unrelated routes.
 
-## Key Design Decisions
+## Credits
 
-- **Concurrent Probing** — A single `AsyncSniffer` captures all responses from various TTLs instead of blocking per-probe calls, enabling high concurrency.
-- **Per-target JSON caching** — Each target gets its own JSON file. Complete results are reused across runs unless `-F`/`--force` is passed.
-- **GeoIP during probing, reverse DNS after** — Hops are enriched with location data as responses arrive, but hostname lookups happen once after the target finishes. This is because GeoIP lookup is fast with the local database, but reverse DNS may block the whole process due to its slow speed.
+This project was developed as part of the **CSCI-SHU 308 Computer Networking** curriculum at NYU Shanghai.
+
+Special thanks to **Professor Prométhée Spathis** for providing the project ideas and continuous support during the semester.
